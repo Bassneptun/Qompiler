@@ -1,0 +1,105 @@
+// comments
+
+/*
+  multiline
+  comment
+*/
+
+let collection; 
+// this is here, so that in the folowing loop, the compiler recognizes it as a variable
+
+// for loops, range based
+for (tmp in collection){
+
+}
+
+// for loops, number based
+for (i in 0..10){
+
+}
+
+// if statements
+/*
+if (condition){
+  // code
+}
+*/
+// this is not implemented yet
+
+// functions 
+/*
+type name(arg1: type, arg2: type){
+  // code
+}
+*/
+
+// example 
+void foo(arg: qbit, arg2: qbit){
+}
+
+// variable declarations
+let name1;
+const name2;
+var name3;
+
+// variable declarations + type
+let name4: qbit;
+const name5: qbit;
+var name6: qbit;
+
+// variable assignments
+name1 = 0;
+
+// variable declarations + assignments
+let name7 = 0;
+const name8 = 0;
+var name9 = 0;
+
+// variable declarations + type + assignments
+let name10: type = 0;
+const name11: type = 0;
+var name12: type = 0;
+
+// structures
+struct name13{
+  var field1: qbit;
+  var field2: qbit;
+}
+
+// pointers
+let ref1: *qbit = &name7;
+
+// arrays
+let arr: qbit[10] = [name1, name2, name3];
+
+// dereferencing pointers
+let val: type = *ref;
+
+// pointer types default to nullptr
+let ref2: *type;
+
+// const pointers must be assigned
+const ref3: *type; // error
+
+// Gates and Functions are to be called by name
+H(&name2);
+foo(name3, name1);
+
+// Gates default to passing by reference and returning void
+let a = H(&b) // error, returns void
+
+// Macros
+/*
+#macro string other_string // replaces string with other_string
+#macro string(argument1, argument2) {
+  argument1 + argument2
+} // replaces string with function body, using argument strings as parameters
+*/ 
+// commented out so that the compiler doesn't try to parse it, this should have been already removed from the preprocessor.
+
+// default types3 
+/*
+void // *void
+qbit // *qbit, qbit[size]
+*/
+// this is commented out because this is invalid syntax

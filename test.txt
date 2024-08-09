@@ -1,0 +1,5 @@
+let a;
+const b;
+var c;
+H $a;
+gate k;
