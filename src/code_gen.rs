@@ -1,19 +1,18 @@
 use crate::parser::ASTNode;
-use core::panicking::panic;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Comptime {
-    program: String,
-    functions: HashMap<String, String>,
-    function_info: HashMap<String, (Vec<String>, String)>, // signature
-    vars: HashMap<String, (usize, usize)>,                 // position in memory
-    var_info: HashMap<String, (bool, usize, String)>,      // is_const, size, type
-    tmp_vars: HashMap<String, (usize, usize)>,             // position in memory
-    tmp_var_info: HashMap<String, (usize, String)>,        // size, type
-    types: HashMap<String, usize>,                         // name to size of type
-    structs: HashMap<(String, String), (usize, String)>, // name of type + field to size of field and type
-    i: i32,
+    pub program: String,
+    pub functions: HashMap<String, String>,
+    pub function_info: HashMap<String, (Vec<String>, String)>, // signature
+    pub vars: HashMap<String, (usize, usize)>,                 // position in memory
+    pub var_info: HashMap<String, (bool, usize, String)>,      // is_const, size, type
+    pub tmp_vars: HashMap<String, (usize, usize)>,             // position in memory
+    pub tmp_var_info: HashMap<String, (usize, String)>,        // size, type
+    pub types: HashMap<String, usize>,                         // name to size of type
+    pub structs: HashMap<(String, String), (usize, String)>, // name of type + field to size of field and type
+    pub i: i32,
 }
 
 // Assign unique numbers to each node type
@@ -46,6 +45,8 @@ pub fn get_discriminant(node: &ASTNode) -> u32 {
         ASTNode::Assignment { .. } => 25,
         ASTNode::Pointer { .. } => 26,
         ASTNode::StructAccess { .. } => 27,
+        ASTNode::ArrayType { .. } => 28,
+        ASTNode::ExternArg { .. } => 29,
     }
 }
 
@@ -184,6 +185,13 @@ pub fn convert_to_string(node: &ASTNode) -> String {
             format!("{}:{}", discriminant, children_str.join("."))
         }
         ASTNode::StructAccess { .. } => format!("{}", discriminant),
+        ASTNode::ArrayType { type_, size } => format!(
+            "{}.{}.{}",
+            discriminant,
+            convert_to_string(type_),
+            convert_to_string(size)
+        ),
+        ASTNode::ExternArg { idx } => format!("{}.{}", discriminant, convert_to_string(idx)),
     }
 }
 
@@ -628,7 +636,9 @@ pub fn generate_code(root: &ASTNode, comptime: Comptime) -> Comptime {
                             func_out = comptime_.function_info.get(&name).unwrap().1.clone()
                         }
                         if let ASTNode::Block(nodes) = *(body.clone().unwrap()) {
-                            match func_out {}
+                            match func_out {
+                                _ => panic!("sdakjshda"),
+                            }
                         }
                     }
                 }

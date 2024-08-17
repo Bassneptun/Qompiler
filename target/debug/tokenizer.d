@@ -1,1 +1,1 @@
-/home/jeremy/Projects/Qompiler/tokenizer/target/debug/tokenizer: /home/jeremy/Projects/Qompiler/tokenizer/src/code_gen.rs /home/jeremy/Projects/Qompiler/tokenizer/src/main.rs /home/jeremy/Projects/Qompiler/tokenizer/src/parser.rs /home/jeremy/Projects/Qompiler/tokenizer/src/tokenizer.rs
+/home/jeremy/Projects/Qompiler/target/debug/tokenizer: /home/jeremy/Projects/Qompiler/src/code_gen.rs /home/jeremy/Projects/Qompiler/src/main.rs /home/jeremy/Projects/Qompiler/src/parser.rs /home/jeremy/Projects/Qompiler/src/tokenizer.rs

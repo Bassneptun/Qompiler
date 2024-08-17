@@ -89,6 +89,13 @@ pub enum ASTNode {
         name: String,
         member: String,
     },
+    ArrayType {
+        type_: Box<ASTNode>,
+        size: Box<ASTNode>,
+    },
+    ExternArg {
+        idx: Box<ASTNode>,
+    },
 }
 
 pub fn create_type(token: Vec<Token>) -> Option<Box<ASTNode>> {
@@ -109,6 +116,10 @@ pub fn create_type(token: Vec<Token>) -> Option<Box<ASTNode>> {
         }
     } else {
         match token[1].token {
+            7 => Some(Box::new(ASTNode::ArrayType {
+                type_: create_type(vec![token[0].clone()])?,
+                size: Box::new(ASTNode::Num(token[2].value.parse().unwrap())),
+            })),
             20 => Some(Box::new(ASTNode::Pointer {
                 name: token[1].value.clone(),
                 value: None,
@@ -168,8 +179,8 @@ pub fn parse_arguments(tokens: Vec<Token>) -> (Vec<ASTNode>, usize) {
                 i += parse_arguments(tokens[i + 2..].to_vec()).1
             }
             51 => {
-                args.push(parse_51(tokens[i + 2..].to_vec()).0);
-                i += parse_51(tokens[i + 2..].to_vec()).1
+                args.push(parse_51(tokens[i..].to_vec()).0);
+                i += parse_51(tokens[i..].to_vec()).1
             }
             _ => panic!("Invalid token: {:?}", tokens[i].token),
         }
@@ -186,15 +197,34 @@ pub fn parse_51(tokens: Vec<Token>) -> (ASTNode, usize) {
             },
             parse_arguments(tokens[2..].to_vec()).1 + 1,
         ),
-        7 => (
-            ASTNode::ArrayAccess {
-                name: tokens[0].value.clone(),
-                index: Box::new(ASTNode::ArrayIndex(
-                    tokens[2].value.parse().expect("this should be a number..."),
-                )),
-            },
-            3,
-        ),
+        7 => {
+            if tokens[2].token == 51 {
+                (
+                    ASTNode::ArrayAccess {
+                        name: tokens[0].value.clone(),
+                        index: Box::new(ASTNode::ArrayIndex(
+                            tokens[2]
+                                .value
+                                .parse()
+                                .expect("this should be a number at this point..."),
+                        )),
+                    },
+                    3,
+                )
+            } else {
+                (
+                    ASTNode::ExternArg {
+                        idx: Box::new(ASTNode::ArrayIndex(
+                            tokens[3]
+                                .value
+                                .parse()
+                                .expect("this should be a number as well"),
+                        )),
+                    },
+                    4,
+                )
+            }
+        }
         40 => (
             ASTNode::StructAccess {
                 name: tokens[0].value.clone(),
@@ -498,7 +528,7 @@ pub fn find_args_and_signature(tokens: Vec<Token>) -> (Vec<String>, Vec<ASTNode>
     let mut args: Vec<String> = vec![];
     let mut signature: Vec<ASTNode> = vec![];
     let mut is_type = false;
-    for tok in tokens[2..].iter() {
+    for tok in tokens[tokens.iter().position(|s| s.token == 3).unwrap()..].iter() {
         match tok.token {
             9 => is_type = true,
             4 => break,
@@ -564,7 +594,7 @@ pub fn find_bounds(tokens: Vec<Token>) -> (usize, usize) {
         j += 1;
     }
 
-    (i, j)
+    (i + 1, j)
 }
 
 pub fn extract(node: ASTNode) -> Box<ASTNode> {
@@ -578,7 +608,7 @@ pub fn extract(node: ASTNode) -> Box<ASTNode> {
 pub fn parse_function_def(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
     let args: Vec<String> = find_args_and_signature(tokens.clone()).0;
     let signature = (
-        create_type(vec![tokens[0].clone()]).unwrap(),
+        create_type(tokens.clone()).unwrap(),
         find_args_and_signature(tokens.clone()).1,
     );
     let name = tokens[1].value.clone();
@@ -600,9 +630,9 @@ pub fn parse_function_def(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
     }
 
     let node = ASTNode::FunctionDef {
-        name: name,
+        name,
         params: args,
-        signature: signature,
+        signature,
         body: a_body,
     };
     (node, find_bounds(tokens.clone()).1 + q)
@@ -678,9 +708,9 @@ pub fn parse_gate(tokens: Vec<Token>) -> (ASTNode, usize) {
     let body = parse_gate_body(tokens[2..].to_vec());
 
     let node = ASTNode::Gate {
-        name: name,
-        args: args,
-        arg_names: arg_names,
+        name,
+        args,
+        arg_names,
         gate: body.0,
     };
     (node, body.1)
@@ -749,7 +779,7 @@ pub fn parse_for(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
 
     (
         ASTNode::For {
-            alias: Some(alias),
+            alias,
             container: Box::new(collection),
             body: a_body,
         },
@@ -834,6 +864,7 @@ pub fn parse(tokens: Vec<Token>) -> ASTNode {
     let mut i = 0;
 
     while i < tokens.len() {
+        println!("{:?}", tokens[i]);
         match tokens[i].token {
             16..=18 => {
                 if let ASTNode::Program(ref mut r) = root {

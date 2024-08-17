@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
-pub const __TOKENS: [&str; 46] = [
+pub const __TOKENS: [&str; 47] = [
     "//", "*/", "/*", "(", ")", "{", "}", "[", "]", ":", ";", ",", "=", "&", "*", "..", "let",
     "var", "const", "struct", "qbit", "void", "#", "macro", "gate", "H", "PX", "PY", "PZ", "CNT",
     "CY", "ID", "TOF", "RX", "RY", "RZ", "S", "T", "SDG", "TDG", ".", "if", "for", "in", "return",
-    "break",
+    "break", "$",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -141,7 +141,7 @@ pub fn filter50s(mut tokens: Vec<Token>) -> Vec<Token> {
                     .collect();
             }
             50 => {
-                if lookup.contains(&(current_scope, tok.value.clone())) {
+                if lookup.iter().position(|s| s.1 == tok.value).is_some() {
                     tok.token = 51; // is a reference, not declaration
                 } else if num_lookup.contains(&tok.value) {
                     tok.token = 52;

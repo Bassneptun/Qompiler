@@ -1,0 +1,17 @@
+qbit[2] encode(is: qbit[2]){
+  for(i in 0..2){
+    RX(is[i], $i);
+  }
+  for(i in 0..2){
+    RY(ins[i], $i);
+  }
+  return ins;
+}
+
+qbit[2] comb(next_: qbit[2]){
+  CNT(next_[0], next_[1]);
+  return next;
+}
+
+let inputs: qbit[2];
+let encoded: qbit[2] = encode(inputs);
