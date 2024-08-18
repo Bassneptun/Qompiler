@@ -1,6 +1,5 @@
 use std::iter::Peekable;
 
-use crate::tokenizer::is_num;
 use crate::tokenizer::Token;
 
 #[derive(Debug, Clone)]
@@ -43,22 +42,16 @@ pub enum ASTNode {
         name: String,
         types: Vec<ASTNode>,
     },
-    Array {
-        name: String,
-        type_: Box<ASTNode>,
-        elements: Vec<ASTNode>,
-        size: Box<ASTNode>,
-    },
     ArrayIndex(u32),
     ArrayAccess {
-        name: String,
+        name: Box<ASTNode>,
         index: Box<ASTNode>,
     },
     Reference {
         name: String,
     },
     Dereference {
-        name: String,
+        value: Box<ASTNode>,
     },
     Break,
     Void,
@@ -78,8 +71,7 @@ pub enum ASTNode {
         name: String,
     },
     Assignment {
-        name: String,
-        arr_index: Option<Box<ASTNode>>,
+        lval: Box<ASTNode>,
         value: Box<ASTNode>,
     },
     Pointer {
@@ -88,7 +80,7 @@ pub enum ASTNode {
         type_: Box<ASTNode>,
     },
     StructAccess {
-        name: String,
+        structure: Box<ASTNode>,
         member: String,
     },
     ArrayType {
@@ -104,854 +96,6 @@ pub enum ASTNode {
     PointerType {
         type_: Box<ASTNode>,
     },
-}
-
-pub fn create_type(token: Vec<Token>) -> Option<Box<ASTNode>> {
-    if token.len() == 1 {
-        match token[0].token {
-            20 => Some(Box::new(ASTNode::Type {
-                name: token[0].value.clone(),
-                specifier: Box::new(ASTNode::Qbit),
-            })),
-            21 => Some(Box::new(ASTNode::Type {
-                name: token[0].value.clone(),
-                specifier: Box::new(ASTNode::Void),
-            })),
-            _ => Some(Box::new(ASTNode::Type {
-                name: token[0].value.clone(),
-                specifier: Box::new(ASTNode::Custom),
-            })),
-        }
-    } else {
-        match token[1].token {
-            7 => Some(Box::new(ASTNode::ArrayType {
-                type_: create_type(vec![token[0].clone()])?,
-                size: Box::new(ASTNode::Num(token[2].value.parse().unwrap())),
-            })),
-            20 => Some(Box::new(ASTNode::Pointer {
-                name: token[1].value.clone(),
-                value: None,
-                type_: Box::new(ASTNode::Type {
-                    name: token[1].value.clone(),
-                    specifier: Box::new(ASTNode::Qbit),
-                }),
-            })),
-            21 => Some(Box::new(ASTNode::Pointer {
-                name: token[1].value.clone(),
-                value: None,
-                type_: Box::new(ASTNode::Type {
-                    name: token[1].value.clone(),
-                    specifier: Box::new(ASTNode::Void),
-                }),
-            })),
-            _ => Some(Box::new(ASTNode::Pointer {
-                name: token[1].value.clone(),
-                value: None,
-                type_: Box::new(ASTNode::Type {
-                    name: token[1].value.clone(),
-                    specifier: Box::new(ASTNode::Custom),
-                }),
-            })),
-        }
-    }
-}
-
-pub fn parse_arguments(tokens: Vec<Token>) -> (Vec<ASTNode>, usize) {
-    let mut args: Vec<ASTNode> = vec![];
-    let mut i = 0;
-    let mut inside = 1;
-    while i < tokens.len() && inside > 0 {
-        match tokens[i].token {
-            3 => inside += 1,
-            4 => inside -= 1,
-            11 => {
-                i += 1;
-            }
-            13 => {
-                args.push(ASTNode::Reference {
-                    name: tokens[i + 1].value.clone(),
-                });
-                i += 2
-            }
-            14 => {
-                args.push(ASTNode::Dereference {
-                    name: tokens[i + 1].value.clone(),
-                });
-                i += 2
-            }
-            25..=39 => {
-                args.push(ASTNode::GateCall {
-                    name: tokens[i + 1].value.clone(),
-                    args: parse_arguments(tokens[i + 2..].to_vec()).0,
-                });
-                i += parse_arguments(tokens[i + 2..].to_vec()).1
-            }
-            51 => {
-                args.push(parse_51(tokens[i..].to_vec()).0);
-                i += parse_51(tokens[i..].to_vec()).1
-            }
-            _ => panic!("Invalid token: {:?}", tokens[i].token),
-        }
-    }
-    (args, i + 3)
-}
-
-pub fn parse_51(tokens: Vec<Token>) -> (ASTNode, usize) {
-    match tokens[1].token {
-        3 => (
-            ASTNode::FunctionCall {
-                name: tokens[0].value.clone(),
-                args: parse_arguments(tokens[2..].to_vec()).0,
-            },
-            parse_arguments(tokens[2..].to_vec()).1 + 1,
-        ),
-        7 => {
-            if tokens[2].token == 51 {
-                (
-                    ASTNode::ArrayAccess {
-                        name: tokens[0].value.clone(),
-                        index: Box::new(ASTNode::ArrayIndex(
-                            tokens[2]
-                                .value
-                                .parse()
-                                .expect("this should be a number at this point..."),
-                        )),
-                    },
-                    3,
-                )
-            } else {
-                (
-                    ASTNode::ExternArg {
-                        idx: Box::new(ASTNode::ArrayIndex(
-                            tokens[3]
-                                .value
-                                .parse()
-                                .expect("this should be a number as well"),
-                        )),
-                    },
-                    4,
-                )
-            }
-        }
-        40 => (
-            ASTNode::StructAccess {
-                name: tokens[0].value.clone(),
-                member: tokens[2].value.clone(),
-            },
-            3,
-        ),
-        _ => (
-            ASTNode::VariableCall {
-                name: tokens[0].value.clone(),
-            },
-            1,
-        ),
-    }
-}
-
-pub fn elems(tokens: Vec<Token>) -> Vec<ASTNode> {
-    let mut elements: Vec<ASTNode> = vec![];
-    let mut inside = 0 as usize;
-    let mut i = 0;
-    for tok in tokens.clone() {
-        match tok.token {
-            51 => elements.push(parse_51(tokens.clone()).0),
-            52 => elements.push(ASTNode::Num(tok.value.parse().unwrap())),
-            5 => inside += 1,
-            6 => inside -= 1,
-            _ => panic!("Invalid token: {:?}", tok.token),
-        }
-        if inside == 0 && i != 0 {
-            break;
-        }
-        i += 1;
-    }
-    elements
-}
-
-pub fn parse_array_decl(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    let index = if tokens[3].token == 14 { 6 } else { 5 };
-    if tokens.iter().position(|x| x.token == 5).is_some() {
-        if tokens.iter().position(|x| x.token == 10).unwrap()
-            < tokens.iter().position(|x| x.token == 5).unwrap()
-        {
-            (
-                ASTNode::Array {
-                    name: tokens[1].value.clone(),
-                    size: Box::new(ASTNode::Num(tokens[index].value.parse().unwrap())),
-                    type_: create_type(tokens[3..(index - 1)].to_vec().clone()).unwrap(),
-                    elements: vec![],
-                },
-                tokens.iter().position(|x| x.token == 10).unwrap() + 1 + q,
-            )
-        } else {
-            (
-                ASTNode::Array {
-                    name: tokens[1].value.clone(),
-                    size: Box::new(ASTNode::Num(tokens[index].value.parse().unwrap())),
-                    type_: create_type(tokens[3..(index - 1)].to_vec().clone()).unwrap(),
-                    elements: elems(
-                        tokens[tokens.iter().position(|x| x.token == 5).unwrap()..]
-                            .to_vec()
-                            .clone(),
-                    ),
-                },
-                tokens.iter().position(|x| x.token == 10).unwrap() + 1 + q,
-            )
-        }
-    } else {
-        (
-            ASTNode::Array {
-                name: tokens[1].value.clone(),
-                size: Box::new(ASTNode::Num(tokens[index].value.parse().unwrap())),
-                type_: create_type(tokens[3..(index - 1)].to_vec().clone()).unwrap(),
-                elements: vec![],
-            },
-            tokens.iter().position(|x| x.token == 10).unwrap() + 1 + q,
-        )
-    }
-}
-
-pub fn parse_variable_decl(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    if tokens[4].token == 7 {
-        return parse_array_decl(tokens, q);
-    }
-    if tokens[2].token == 10 {
-        // semicolon found right after variable declaration
-        return (
-            ASTNode::VariableDecl {
-                name: tokens[1].value.clone(),
-                value: None,
-                type_: None,
-                token: tokens[2].token as i32,
-            },
-            3 + q,
-        );
-    } else if tokens[2].token == 9 {
-        // type specifier found, is expected yet
-        if tokens[4].token == 10 || (tokens[3].token == 14 && tokens[5].token == 10) {
-            // semicolon found right after variable declaration, or the same but with a pointer type
-            return (
-                ASTNode::VariableDecl {
-                    name: tokens[1].value.clone(),
-                    value: None,
-                    type_: create_type(vec![tokens[3].clone()]),
-                    token: tokens[0].token as i32,
-                },
-                5 + q + (if tokens[3].token == 14 { 1 } else { 0 }),
-            );
-        } else if tokens[2].token == 9 {
-            // equal sign expected here, but not checked for. Will be checked later
-            let index = if tokens[5].token == 12 { 6 } else { 5 };
-            match tokens[index].token {
-                13 => {
-                    return (
-                        ASTNode::VariableDecl {
-                            name: tokens[1].value.clone(),
-                            value: Some(Box::new(ASTNode::Reference {
-                                name: tokens[index + 1].value.clone(),
-                            })),
-                            type_: create_type(tokens[3..index].to_vec().clone()),
-                            token: tokens[0].token as i32,
-                        },
-                        9 + q,
-                    )
-                }
-                14 => {
-                    return (
-                        ASTNode::VariableDecl {
-                            name: tokens[1].value.clone(),
-                            value: Some(Box::new(ASTNode::Dereference {
-                                name: tokens[index + 1].value.clone(),
-                            })),
-                            type_: create_type(tokens[3..index].to_vec().clone()),
-                            token: tokens[0].token as i32,
-                        },
-                        8 + q,
-                    )
-                }
-                25..=39 => {
-                    return (
-                        ASTNode::VariableDecl {
-                            name: tokens[1].value.clone(),
-                            value: Some(Box::new(ASTNode::GateCall {
-                                name: tokens[index].value.clone(),
-                                args: parse_arguments(tokens[index + 2..].to_vec()).0,
-                            })),
-                            type_: create_type(tokens[3..index].to_vec().clone()),
-                            token: tokens[0].token as i32,
-                        },
-                        parse_arguments(tokens[index + 2..].to_vec()).1
-                            + q
-                            + [3..index].to_vec().len()
-                            - 1,
-                    )
-                }
-                51 => {
-                    return (
-                        ASTNode::VariableDecl {
-                            name: tokens[1].value.clone(),
-                            value: Some(Box::new(parse_51(tokens[index..].to_vec()).0)),
-                            type_: create_type(tokens[3..index].to_vec().clone()),
-                            token: tokens[0].token as i32,
-                        },
-                        parse_51(tokens[index..].to_vec()).1 + q + [3..index].to_vec().len() - 1,
-                    )
-                }
-                52 => {
-                    return (
-                        ASTNode::VariableDecl {
-                            name: tokens[1].value.clone(),
-                            value: Some(Box::new(ASTNode::Num(
-                                tokens[index].value.parse().unwrap(),
-                            ))),
-                            type_: create_type(tokens[3..index].to_vec().clone()),
-                            token: tokens[0].token as i32,
-                        },
-                        7 + q,
-                    )
-                }
-                _ => panic!("Invalid token: {:?}", tokens[6].token),
-            }
-        } else {
-            panic!("Invalid token: {:?}", tokens[2].token);
-        }
-    } else if tokens[2].token == 12 {
-        // equal sign found, type deduction is expected
-        match tokens[3].token {
-            13 => {
-                return (
-                    ASTNode::VariableDecl {
-                        name: tokens[1].value.clone(),
-                        value: Some(Box::new(ASTNode::Reference {
-                            name: tokens[4].value.clone(),
-                        })),
-                        type_: None,
-                        token: tokens[0].token as i32,
-                    },
-                    8 + q,
-                )
-            }
-            14 => {
-                return (
-                    ASTNode::VariableDecl {
-                        name: tokens[1].value.clone(),
-                        value: Some(Box::new(ASTNode::Dereference {
-                            name: tokens[4].value.clone(),
-                        })),
-                        type_: None,
-                        token: tokens[0].token as i32,
-                    },
-                    8 + q,
-                )
-            }
-            25..=39 => {
-                return (
-                    ASTNode::VariableDecl {
-                        name: tokens[1].value.clone(),
-                        value: Some(Box::new(ASTNode::GateCall {
-                            name: tokens[3].value.clone(),
-                            args: parse_arguments(tokens[5..].to_vec()).0,
-                        })),
-                        type_: None,
-                        token: tokens[0].token as i32,
-                    },
-                    parse_arguments(tokens[5..].to_vec()).1 + q + 3,
-                )
-            }
-            51 => {
-                return (
-                    ASTNode::VariableDecl {
-                        name: tokens[1].value.clone(),
-                        value: Some(Box::new(parse_51(tokens[3..].to_vec()).0)),
-                        type_: None,
-                        token: tokens[0].token as i32,
-                    },
-                    parse_51(tokens[3..].to_vec()).1 + q,
-                )
-            }
-            52 => {
-                return (
-                    ASTNode::VariableDecl {
-                        name: tokens[1].value.clone(),
-                        value: Some(Box::new(ASTNode::Num(tokens[3].value.parse().unwrap()))),
-                        type_: None,
-                        token: tokens[0].token as i32,
-                    },
-                    5 + q,
-                )
-            }
-            _ => panic!("Invalid token: {:?}", tokens[6].token),
-        }
-    } else {
-        panic!("this should really not happen");
-    }
-}
-
-pub fn parse_rval(tokens: Vec<Token>) -> (ASTNode, usize) {
-    match tokens[0].token {
-        13 => (
-            ASTNode::Reference {
-                name: tokens[1].value.clone(),
-            },
-            2,
-        ),
-        14 => (
-            ASTNode::Dereference {
-                name: tokens[1].value.clone(),
-            },
-            2,
-        ),
-        25..=39 => (
-            ASTNode::GateCall {
-                name: tokens[0].value.clone(),
-                args: parse_arguments(tokens[2..].to_vec()).0,
-            },
-            parse_arguments(tokens[2..].to_vec()).1,
-        ),
-        51 => {
-            if tokens.len() > 2 {
-                (
-                    parse_51(tokens[2..].to_vec()).0,
-                    parse_51(tokens[2..].to_vec()).1,
-                )
-            } else {
-                (
-                    ASTNode::VariableCall {
-                        name: tokens[0].value.clone(),
-                    },
-                    1,
-                )
-            }
-        }
-        52 => (ASTNode::Num(tokens[0].value.parse().unwrap()), 1),
-        _ => panic!(
-            "Invalid token: {:?}, {:?}",
-            tokens[0].token, tokens[0].value
-        ),
-    }
-}
-
-pub fn find_args_and_signature(tokens: Vec<Token>) -> (Vec<String>, Vec<ASTNode>) {
-    let mut args: Vec<String> = vec![];
-    let mut signature: Vec<ASTNode> = vec![];
-    let mut is_type = false;
-    for tok in tokens[tokens.iter().position(|s| s.token == 3).unwrap()..].iter() {
-        match tok.token {
-            9 => is_type = true,
-            4 => break,
-            11 => is_type = false,
-            20 => {
-                if is_type {
-                    signature.push(ASTNode::Type {
-                        name: tok.value.clone(),
-                        specifier: Box::new(ASTNode::Qbit),
-                    });
-                    is_type = false;
-                } else {
-                    panic!(
-                        "expected name but got compiler-reserved keyword: {:?}",
-                        tok.value
-                    );
-                }
-            }
-            21 => panic!("void is neither a valid name nor type in function defenitions"),
-            50 => {
-                if !is_type {
-                    args.push(tok.value.clone());
-                    is_type = true;
-                } else {
-                    panic!("unknown type_: {:?}", tok.value);
-                }
-            }
-            51 => {
-                if !is_type {
-                    args.push(tok.value.clone());
-                    is_type = true;
-                } else {
-                    signature.push(*create_type(vec![tok.clone()]).unwrap());
-                    is_type = false;
-                }
-            }
-            _ => {}
-        }
-    }
-    (args, signature)
-}
-
-pub fn find_bounds(tokens: Vec<Token>) -> (usize, usize) {
-    let mut i = 0;
-    let mut j = 0;
-    let mut k = 0;
-    for tok in &tokens {
-        if tok.token == 5 {
-            j += 1;
-            k = 1;
-            break;
-        } else {
-            i += 1;
-            j += 1;
-        }
-    }
-    while k != 0 {
-        if tokens[j].token == 5 {
-            k += 1;
-        } else if tokens[j].token == 6 {
-            k -= 1;
-        }
-        j += 1;
-    }
-
-    (i + 1, j)
-}
-
-pub fn extract(node: ASTNode) -> Box<ASTNode> {
-    if let ASTNode::Program(ref r) = node {
-        return Box::new(ASTNode::Block((*r).clone()));
-    } else {
-        panic!("this should not happen");
-    }
-}
-
-pub fn parse_function_def(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    let args: Vec<String> = find_args_and_signature(tokens.clone()).0;
-    let signature = (
-        create_type(tokens.clone()).unwrap(),
-        find_args_and_signature(tokens.clone()).1,
-    );
-    let name = tokens[1].value.clone();
-
-    let (b_1, b_2) = find_bounds(tokens.clone());
-    let body: Option<ASTNode>;
-    let a_body;
-
-    if b_2 - b_1 > 3 {
-        body = Some(parse(tokens[b_1..b_2].to_vec()));
-    } else {
-        body = None;
-    }
-
-    if !body.is_none() {
-        a_body = Some(extract(parse(tokens[b_1..b_2].to_vec())));
-    } else {
-        a_body = None;
-    }
-
-    let node = ASTNode::FunctionDef {
-        name,
-        params: args,
-        signature,
-        body: a_body,
-    };
-    (node, find_bounds(tokens.clone()).1 + q)
-}
-
-pub fn fetch_args_and_names(tokens: Vec<Token>) -> (Vec<ASTNode>, Vec<String>) {
-    let mut args: Vec<ASTNode> = vec![];
-    let mut names: Vec<String> = vec![];
-    let mut is_type = false;
-    for tok in tokens[1..].iter() {
-        match tok.token {
-            9 => is_type = true,
-            4 => break,
-            15 => {
-                if !is_type {
-                    panic!("error");
-                } else {
-                    args.push(ASTNode::Type {
-                        name: tok.value.clone(),
-                        specifier: Box::new(ASTNode::Qdit),
-                    });
-                }
-            }
-            50 => {
-                if !is_type {
-                    names.push(tok.value.clone());
-                    is_type = false;
-                } else {
-                    panic!("unknown type_: {:?}", tok.value);
-                }
-            }
-            51 => {
-                if !is_type {
-                    names.push(tok.value.clone());
-                    let _ = !is_type;
-                } else {
-                    args.push(*create_type(vec![tok.clone()]).unwrap());
-                    let _ = !is_type;
-                }
-            }
-            _ => {}
-        }
-    }
-    (args, names)
-}
-
-pub fn parse_gate_body(tokens: Vec<Token>) -> (Vec<Vec<f32>>, usize) {
-    let (start, end) = find_bounds(tokens.clone());
-
-    let mut args: Vec<Vec<f32>> = vec![];
-    let mut i = start;
-    let mut current: Vec<f32> = vec![];
-    while i < end - 1 {
-        match tokens[i].token {
-            6 => {
-                args.push(current.clone());
-                current = vec![];
-            }
-            50 => {
-                current.push(tokens[i].value.parse::<f32>().unwrap());
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    (args, end)
-}
-
-pub fn parse_gate(tokens: Vec<Token>) -> (ASTNode, usize) {
-    let name = tokens[1].value.clone();
-    let (args, arg_names) = fetch_args_and_names(tokens[2..].to_vec());
-
-    let body = parse_gate_body(tokens[2..].to_vec());
-
-    let node = ASTNode::Gate {
-        name,
-        args,
-        arg_names,
-        gate: body.0,
-    };
-    (node, body.1)
-}
-
-pub fn parse_gate_call(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    (
-        ASTNode::GateCall {
-            name: tokens[0].value.clone(),
-            args: parse_arguments(tokens[2..].to_vec()).0,
-        },
-        parse_arguments(tokens[2..].to_vec()).1 + q + 1,
-    )
-}
-
-pub fn parse_range(tokens: Vec<Token>) -> (ASTNode, usize) {
-    (
-        ASTNode::Range {
-            start: Box::new(ASTNode::Num(tokens[0].value.parse().unwrap())),
-            end: Box::new(ASTNode::Num(tokens[2].value.parse().unwrap())),
-        },
-        3,
-    )
-}
-
-pub fn parse_for(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    let is_range = tokens[..tokens.iter().position(|x| x.token == 5).unwrap()]
-        .to_vec()
-        .contains(&Token {
-            token: 15,
-            value: String::from(".."),
-        });
-    let i = tokens.iter().position(|x| x.token == 3).unwrap();
-    let alias = tokens[i + 1].value.clone();
-    let collection: ASTNode;
-
-    if !is_range {
-        collection =
-            parse_rval(tokens[i + 3..tokens.iter().position(|x| x.token == 4).unwrap()].to_vec()).0;
-    } else {
-        collection = parse_range(
-            tokens[tokens.iter().position(|x| is_num(x.value.clone())).unwrap()
-                ..=tokens.iter().position(|x| is_num(x.value.clone())).unwrap() + 2]
-                .to_vec()
-                .clone(),
-        )
-        .0;
-    }
-
-    let (b_1, b_2) = find_bounds(tokens.clone());
-    //print!("{}, {},\n {:?},\n {:?}", b_1, b_2, tokens[b_1], tokens[b_2]);
-    let body: Option<ASTNode>;
-    let a_body;
-
-    if b_2 - b_1 > 3 {
-        body = Some(parse(tokens[b_1..b_2].to_vec()));
-    } else {
-        body = None;
-    }
-
-    if !body.is_none() {
-        a_body = Some(extract(parse(tokens[b_1..b_2].to_vec())));
-    } else {
-        a_body = None;
-    }
-
-    (
-        ASTNode::For {
-            alias,
-            container: Box::new(collection),
-            body: a_body,
-        },
-        b_2 + q,
-    )
-}
-
-pub fn parse_assignment(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    if tokens[1].token == 12 {
-        (
-            ASTNode::Assignment {
-                name: tokens[0].value.clone(),
-                value: Box::new(
-                    parse_rval(
-                        tokens[2..tokens.iter().position(|x| x.token == 10).unwrap()].to_vec(),
-                    )
-                    .0,
-                ),
-                arr_index: None,
-            },
-            parse_rval(tokens[2..].to_vec()).1 + q + 3,
-        )
-    } else {
-        (
-            ASTNode::Assignment {
-                name: tokens[0].value.clone(),
-                arr_index: Some(Box::new(ASTNode::ArrayIndex(
-                    tokens[2].value.parse().expect("this should be a number..."),
-                ))),
-                value: Box::new(
-                    parse_rval(
-                        tokens[5..tokens.iter().position(|x| x.token == 10).unwrap()].to_vec(),
-                    )
-                    .0,
-                ),
-            },
-            parse_rval(tokens[5..].to_vec()).1 + q,
-        )
-    }
-}
-
-pub fn parse_51_2(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    if tokens[..tokens.iter().position(|x| x.token == 10).unwrap()]
-        .to_vec()
-        .contains(&Token {
-            token: 12,
-            value: String::from("="),
-        })
-    {
-        return parse_assignment(tokens, q);
-    } else {
-        let (a, b) = parse_51(tokens);
-        return (a, b + q);
-    }
-}
-
-pub fn get_types(tokens: Vec<Token>) -> (Vec<ASTNode>, usize) {
-    let bound = find_bounds(tokens.clone()).1 - 1;
-    let tokens_copy = tokens[1..].to_vec().clone();
-    let mut i = 0;
-    let mut types: Vec<ASTNode> = vec![];
-    while i < bound - 2 {
-        types.push(parse_variable_decl(tokens_copy[i..].to_vec(), i).0);
-        i = parse_variable_decl(tokens_copy[i..].to_vec(), i).1;
-    }
-
-    (types, i + 1)
-}
-
-pub fn parse_struct_def(tokens: Vec<Token>, q: usize) -> (ASTNode, usize) {
-    (
-        ASTNode::Struct {
-            name: tokens[1].value.clone(),
-            types: get_types(tokens[2..].to_vec()).0,
-        },
-        get_types(tokens[2..].to_vec()).1 + q + 3,
-    )
-}
-
-pub fn parse(tokens: Vec<Token>) -> ASTNode {
-    let mut root: ASTNode = ASTNode::Program(vec![]);
-    let mut i = 0;
-
-    while i < tokens.len() {
-        println!("{:?}", tokens[i]);
-        match tokens[i].token {
-            16..=18 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(parse_variable_decl(tokens[i..].to_vec(), i).0, );
-                } else {
-                    panic!("this serves no purpose, I am afraid of the Compiler");
-                }
-                i = parse_variable_decl(tokens[i..].to_vec(), i).1;
-            },
-            19 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(parse_struct_def(tokens[i..].to_vec(), i).0);
-                } else {
-                    panic!("same as before");
-                }
-                i = parse_struct_def(tokens[i..].to_vec(), i).1;
-            },
-            20..=21 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(parse_function_def(tokens[i..].to_vec(), i).0);
-                } else {
-                    panic!("same as before");
-                }
-                i = parse_function_def(tokens[i..].to_vec(), i).1;
-            },
-            24 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(parse_gate(tokens[i..].to_vec()).0);
-                } else {
-                    panic!("same as before");
-                }
-                i = parse_gate(tokens[i..].to_vec()).1;
-            },
-            25..=39 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(parse_gate_call(tokens[i..].to_vec(), i).0);
-                } else {
-                    panic!("same as before");
-                }
-                i = parse_gate_call(tokens[i..].to_vec(), i).1;
-            },
-            42 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(parse_for(tokens[i..].to_vec(), i).0);
-                } else {
-                    panic!("same as before");
-                }
-                i = parse_for(tokens[i..].to_vec(), i).1;
-            },
-            44 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(ASTNode::Return(
-                        Box::new(parse_rval(tokens[i..tokens.iter().position(|x| x.token == 10).unwrap()].to_vec()).0)
-                    ));
-                } else {
-                    panic!("same as before");
-                }
-                i = parse_rval(tokens[i..tokens.iter().position(|x| x.token == 10).unwrap()].to_vec()).1;
-            },
-            45 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(ASTNode::Break);
-                } else {
-                    panic!("same as before");
-                }
-                i += 2;
-            },
-            51 => {
-                if let ASTNode::Program(ref mut r) = root {
-                    r.push(parse_51_2(tokens[i..].to_vec(), i).0);
-                } else {
-                    panic!("same as before");
-                }
-                i = parse_51_2(tokens[i..].to_vec(), i).1;
-            }
-            _ => panic!("if you see this, something went wrong, and I am afraid there's a chance it isn't even your fault. current Token: {}, {}, token nr. {}", tokens[i].token, tokens[i].value, i),
-        }
-    }
-    root
 }
 
 #[derive(Debug)]
@@ -1064,15 +208,16 @@ where
     match tokens.peek() {
         Some(Tok::Qbit) => parse_function_def_(tokens, tokens2),
         Some(Tok::Void) => parse_function_def_(tokens, tokens2),
-        Some(Tok::If) => parse_if(tokens, tokens2),
+        //Some(Tok::If) => parse_if(tokens, tokens2),
         Some(Tok::For) => parse_for_(tokens, tokens2),
         Some(Tok::VarDecl) => parse_var_decl(tokens, tokens2),
         Some(Tok::Struct) => parse_struct_def_(tokens, tokens2),
         Some(Tok::GateCall) => parse_gate_call_(tokens, tokens2),
         Some(Tok::ConstDecl) => parse_var_decl(tokens, tokens2), // disambiguity ends here, now it
         // gets really fucked.
-        Some(Tok::Old) => parse_any_(tokens, tokens2),
+        Some(Tok::Old) => parse_any_(tokens, tokens2, None),
         Some(Tok::Star) => parse_any_2(tokens, tokens2),
+        Some(Tok::Num) => parse_range_(tokens, tokens2),
         None => Ok(None),
         _ => Ok(Some(ASTNode::Void)),
     }
@@ -1087,7 +232,65 @@ where
     tokens2.next();
 }
 
-fn parse_template<I, I2>(
+fn parse_any_<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+    mut current: Option<ASTNode>,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    if current.is_none() {
+        // function call, variable reference, assignment
+        let first = tokens2.peek().unwrap().value.clone();
+        advance(tokens, tokens2);
+        current = Some(ASTNode::VariableCall {
+            name: first.clone(),
+        });
+        match tokens.peek() {
+            None => return Err("Expected Expression, got None".to_string()),
+            Some(Tok::CBracket) => return Ok(current),
+            Some(Tok::Comma) => return Ok(current),
+            Some(Tok::OBracket) => current = parse_function_call_(tokens, tokens2, first)?,
+            Some(Tok::Equal) => return Ok(parse_assignment_(tokens, tokens2, current.unwrap())?),
+            Some(Tok::Dot) => current = parse_struct_access(tokens, tokens2, current.unwrap())?,
+            Some(Tok::OSBracket) => {
+                current = parse_array_access(tokens, tokens2, current.unwrap())?
+            }
+            Some(Tok::Semicolon) => return Ok(current),
+            Some(other) => {
+                return Err(format!(
+                    "Expected '(', ',', '[', '=', '.', ')', but got {other:?}"
+                ))
+            }
+        }
+        parse_any_(tokens, tokens2, current)
+    } else {
+        // function call, variable reference, assignment
+        let first = tokens2.peek().unwrap().value.clone();
+        advance(tokens, tokens2);
+        match tokens.peek() {
+            None => return Err("Expected Expression, got None".to_string()),
+            Some(Tok::CBracket) => return Ok(current),
+            Some(Tok::Comma) => return Ok(current),
+            Some(Tok::OBracket) => current = parse_function_call_(tokens, tokens2, first)?,
+            Some(Tok::Equal) => return Ok(parse_assignment_(tokens, tokens2, current.unwrap())?),
+            Some(Tok::Dot) => current = parse_struct_access(tokens, tokens2, current.unwrap())?,
+            Some(Tok::OSBracket) => {
+                current = parse_array_access(tokens, tokens2, current.unwrap())?
+            }
+            Some(Tok::Semicolon) => return Ok(current),
+            Some(other) => {
+                return Err(format!(
+                    "Expected '(', ',', '[', '=', '.', ')', but got {other:?}"
+                ))
+            }
+        }
+        parse_any_(tokens, tokens2, current)
+    }
+}
+fn parse_range_<I, I2>(
     tokens: &mut Peekable<I>,
     tokens2: &mut Peekable<I2>,
 ) -> Result<Option<ASTNode>, String>
@@ -1095,7 +298,446 @@ where
     I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
     I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
 {
-    Ok(Some(ASTNode::Void))
+    let first_num = tokens2
+        .peek()
+        .unwrap()
+        .value
+        .clone()
+        .parse::<i32>()
+        .unwrap();
+    advance(tokens, tokens2);
+    match tokens.peek() {
+        None => return Err("Error: Expected '..', got None".to_string()),
+        Some(Tok::DotDot) => advance(tokens, tokens2),
+        Some(other) => return Err(format!("Expected '..', got {other:?}")),
+    }
+    let second_num = tokens2
+        .peek()
+        .unwrap()
+        .value
+        .clone()
+        .parse::<i32>()
+        .unwrap();
+    Ok(Some(ASTNode::Range {
+        start: Box::new(ASTNode::Num(first_num)),
+        end: Box::new(ASTNode::Num(second_num)),
+    }))
+}
+fn parse_assignment_<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+    prev: ASTNode,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    advance(tokens, tokens2);
+
+    let value_ = parse_statement(tokens, tokens2);
+    let value;
+    match value_ {
+        Ok(o) => value = o.expect("Error: expected r-value, got None"),
+        Err(e) => return Err(e),
+    }
+
+    Ok(Some(ASTNode::Assignment {
+        lval: Box::new(prev),
+        value: Box::new(value),
+    }))
+}
+
+fn parse_struct_access<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+    prev: ASTNode,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    advance(tokens, tokens2);
+
+    let name_ = parse_name(tokens, tokens2);
+    let name;
+    match name_ {
+        Ok(o) => name = o,
+        Err(e) => return Err(e),
+    }
+
+    Ok(Some(ASTNode::StructAccess {
+        structure: Box::new(prev),
+        member: name,
+    }))
+}
+fn parse_array_access<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+    prev: ASTNode,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    advance(tokens, tokens2);
+
+    match tokens.peek() {
+        Some(Tok::Num) => {
+            let n: u32 = tokens2.peek().unwrap().clone().value.parse().unwrap();
+            advance(tokens, tokens2);
+            match tokens.peek() {
+                None => Err("Expected ], got None".to_string()),
+                Some(Tok::CSBracket) => {
+                    advance(tokens, tokens2);
+                    Ok(Some(ASTNode::ArrayAccess {
+                        name: Box::new(prev),
+                        index: Box::new(ASTNode::ArrayIndex(n)),
+                    }))
+                }
+                Some(_) => Err(format!(
+                    "expected ], got {}",
+                    tokens2.peek().unwrap().value.clone()
+                )),
+            }
+        }
+        Some(Tok::PHPRef) => {
+            advance(tokens, tokens2);
+            match tokens.peek() {
+                None => Err("Expected index to external variable array, got None".to_string()),
+                Some(Tok::Num) => {
+                    let n: u32 = tokens2.peek().unwrap().clone().value.parse().unwrap();
+                    advance(tokens, tokens2);
+                    match tokens.peek() {
+                        None => Err("Expected ], got None".to_string()),
+                        Some(Tok::CSBracket) => {
+                            advance(tokens, tokens2);
+                            Ok(Some(ASTNode::ArrayAccess {
+                                name: Box::new(prev),
+                                index: Box::new(ASTNode::ExternArg {
+                                    idx: Box::new(ASTNode::ArrayIndex(n)),
+                                }),
+                            }))
+                        }
+                        Some(_) => Err(format!(
+                            "expected ], got {}",
+                            tokens2.peek().unwrap().value.clone()
+                        )),
+                    }
+                }
+                Some(Tok::Old) => {
+                    let n = tokens2.peek().unwrap().value.clone();
+                    advance(tokens, tokens2);
+                    match tokens.peek() {
+                        None => Err("Expected ], got None".to_string()),
+                        Some(Tok::CSBracket) => {
+                            advance(tokens, tokens2);
+                            Ok(Some(ASTNode::ArrayAccess {
+                                name: Box::new(prev),
+                                index: Box::new(ASTNode::ExternArg {
+                                    idx: Box::new(ASTNode::IntCall { name: n }),
+                                }),
+                            }))
+                        }
+                        Some(_) => Err(format!(
+                            "expected ], got {}",
+                            tokens2.peek().unwrap().value.clone()
+                        )),
+                    }
+                }
+                Some(_) => Err(format!(
+                    "expected num or for variable, got {}",
+                    tokens2.peek().unwrap().value.clone()
+                )),
+            }
+        }
+        Some(Tok::Old) => {
+            let name = tokens2.peek().unwrap().value.clone();
+            advance(tokens, tokens2);
+            if let Some(Tok::CSBracket) = tokens.peek() {
+                advance(tokens, tokens2);
+                Ok(Some(ASTNode::ArrayAccess {
+                    name: Box::new(prev),
+                    index: Box::new(ASTNode::IntCall { name }),
+                }))
+            } else {
+                Err(format!(
+                    "expected ], got {}",
+                    tokens2.peek().unwrap().value.clone()
+                ))
+            }
+        }
+        _ => Err(format!(
+            "Expected literal or iterator varible, got {}",
+            tokens2
+                .peek()
+                .expect("Expected literal or iterator variable, got None")
+                .value
+                .clone()
+        )),
+    }
+}
+
+fn parse_function_call_<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+    prev: String,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    let tmp = parse_call_args(tokens, tokens2);
+    match tmp {
+        Err(e) => Err(e),
+        Ok(o) => Ok(Some(ASTNode::FunctionCall {
+            name: prev,
+            args: o,
+        })),
+    }
+}
+
+fn parse_any_2<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    advance(tokens, tokens2);
+    let scnd = parse_any_(tokens, tokens2, None);
+    match scnd {
+        Err(e) => Err(e),
+        Ok(o) => Ok(Some(ASTNode::Dereference {
+            value: Box::new(o.expect("expected rval after '*', but got None")),
+        })),
+    }
+}
+
+fn parse_call_args<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+) -> Result<Vec<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    let mut arguments: Vec<ASTNode> = vec![];
+    loop {
+        arguments.push(parse_statement(tokens, tokens2).unwrap().unwrap());
+        match tokens.peek() {
+            None => return Err("Expected ',' or ')', got None".to_string()),
+            Some(Tok::Comma) => advance(tokens, tokens2),
+            Some(Tok::CBracket) => break,
+            Some(_) => {}
+        }
+    }
+    Ok(arguments)
+}
+
+fn parse_gate_call_<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    let name = tokens2.peek().unwrap().value.clone();
+    for _ in 1..=2 {
+        advance(tokens, tokens2)
+    }
+    let args = parse_call_args(tokens, tokens2);
+    let mut arguments = Vec::new();
+    match args {
+        Err(e) => println!("Error: {e:?}"),
+        Ok(a) => arguments = a,
+    }
+    Ok(Some(ASTNode::GateCall {
+        name,
+        args: arguments,
+    }))
+}
+
+fn parse_var_decl<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    let tok = tokens2.peek().unwrap().token;
+    advance(tokens, tokens2);
+    let name_ = parse_name(tokens, tokens2);
+    let mut name = String::new();
+    match name_ {
+        Ok(v) => name = v,
+        Err(e) => println!("Error: {e:?}"),
+    }
+    match tokens.peek() {
+        None => return Err("Expected ':', got None".to_string()),
+        Some(Tok::DoublePoint) => advance(tokens, tokens2),
+        Some(Tok::Semicolon) => {
+            return Ok(Some(ASTNode::VariableDecl {
+                name,
+                value: None,
+                type_: None,
+                token: -1,
+            }));
+        }
+        Some(other) => return Err(format!("Expected ':', got {:?}", other)),
+    }
+
+    let type_ = parse_type_(tokens, tokens2);
+    let mut type__ = ASTNode::Void;
+    match type_ {
+        Ok(v) => type__ = v.expect("Error: didn't find valid type in function declaration"),
+        Err(e) => println!("Error: {e:?}"),
+    }
+
+    match tokens.peek() {
+        None => return Err("Expected ';' or '=', got None".to_string()),
+        Some(Tok::Semicolon) => {
+            return Ok(Some(ASTNode::VariableDecl {
+                name,
+                value: None,
+                type_: Some(Box::new(type__)),
+                token: -1,
+            }))
+        }
+        Some(Tok::Equal) => advance(tokens, tokens2),
+        Some(other) => return Err(format!("Expected ';' or '=', got {:?}", other)),
+    }
+
+    let rval = parse_statement(tokens, tokens2);
+    let mut rval_ = ASTNode::Void;
+    match rval {
+        Ok(Some(v)) => rval_ = v,
+        Ok(None) => return Err("Expected rval expression, got None".to_string()),
+        Err(e) => println!("Error: {e:?}"),
+    }
+
+    match tokens.peek() {
+        None => return Err("Expected ';', got None".to_string()),
+        Some(Tok::Semicolon) => {
+            return Ok(Some(ASTNode::VariableDecl {
+                name,
+                value: Some(Box::new(rval_)),
+                type_: Some(Box::new(type__)),
+                token: tok,
+            }));
+        }
+        Some(other) => return Err(format!("Expected ';', got {:?}", other)),
+    }
+}
+
+fn parse_struct_members<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+) -> Result<Vec<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    let mut struct_members: Vec<ASTNode> = Vec::new();
+    while let Ok(Some(node)) = parse_var_decl(tokens, tokens2) {
+        struct_members.push(node);
+    }
+
+    Ok(struct_members)
+}
+
+fn parse_struct_def_<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    advance(tokens, tokens2);
+    let name_ = parse_name(tokens, tokens2);
+    let mut name = String::new();
+    match name_ {
+        Ok(v) => name = v,
+        Err(e) => println!("Error: {e:?}"),
+    }
+
+    match tokens.peek() {
+        None => return Err("Expected {{, got None".to_string()),
+        Some(Tok::OBracket) => advance(tokens, tokens2),
+        Some(other) => return Err(format!("Expected '{{', got {:?}", other)),
+    }
+
+    let mems = parse_struct_members(tokens, tokens2);
+    let mut mems2 = vec![];
+    match mems {
+        Ok(ref a) => mems2 = a.to_vec(),
+        Err(ref e) => println!("Error: {e:?}"),
+    }
+    Ok(Some(ASTNode::Struct { name, types: mems2 }))
+}
+
+fn parse_for_<I, I2>(
+    tokens: &mut Peekable<I>,
+    tokens2: &mut Peekable<I2>,
+) -> Result<Option<ASTNode>, String>
+where
+    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
+    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
+{
+    advance(tokens, tokens2);
+    if let Some(Tok::OBracket) = tokens.peek() {
+        advance(tokens, tokens2);
+    } else {
+        return Err("Expected (".to_string());
+    }
+    let name_ = parse_name(tokens, tokens2);
+    let mut name = String::new();
+    match name_ {
+        Ok(v) => name = v,
+        Err(e) => println!("Error: {e:?}"),
+    }
+
+    match tokens.peek() {
+        Some(Tok::In) => advance(tokens, tokens2),
+        Some(another) => return Err(format!("Expected 'in', got {:?}", another)),
+        None => return Err("Expected 'in', got None".to_string()),
+    }
+
+    let container = parse_statement(tokens, tokens2);
+    let mut container_ = ASTNode::Void;
+    match container {
+        Ok(Some(v)) => container_ = v,
+        Ok(None) => return Err("Expected rval expression, got None".to_string()),
+        Err(e) => println!("Error: {e:?}"),
+    }
+
+    match tokens.peek() {
+        None => return Err("Expected ), got None".to_string()),
+        Some(Tok::CBracket) => advance(tokens, tokens2),
+        Some(other) => return Err(format!("Expected ), got {:?}", other)),
+    }
+
+    match tokens.peek() {
+        None => return Err("Expected {, got None".to_string()),
+        Some(Tok::OCBracket) => advance(tokens, tokens2),
+        Some(other) => return Err(format!("Expected {{, got {:?}", other)),
+    }
+
+    let mut body = None;
+    let body_ = parse_body_(tokens, tokens2);
+    match body_ {
+        Ok(Some(v)) => body = Some(Box::new(v)),
+        Ok(None) => body = None,
+        Err(e) => println!("Error: {e:?}"),
+    }
+    Ok(Some(ASTNode::For {
+        container: Box::new(container_),
+        alias: name,
+        body,
+    }))
 }
 
 fn parse_function_def_<I, I2>(
@@ -1106,6 +748,7 @@ where
     I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
     I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
 {
+    advance(tokens, tokens2);
     let type_ = parse_type_(tokens, tokens2);
     let mut type__ = ASTNode::Void;
     match type_ {
@@ -1453,6 +1096,7 @@ where
     Ok(nodes)
 }
 
+/*
 fn parse_if<I, I2>(
     tokens: &mut Peekable<I>,
     tokens2: &mut Peekable<I2>,
@@ -1463,63 +1107,4 @@ where
 {
     Ok(Some(ASTNode::Void))
 }
-fn parse_for_<I, I2>(
-    tokens: &mut Peekable<I>,
-    tokens2: &mut Peekable<I2>,
-) -> Result<Option<ASTNode>, String>
-where
-    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
-    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
-{
-    Ok(Some(ASTNode::Void))
-}
-fn parse_var_decl<I, I2>(
-    tokens: &mut Peekable<I>,
-    tokens2: &mut Peekable<I2>,
-) -> Result<Option<ASTNode>, String>
-where
-    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
-    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
-{
-    Ok(Some(ASTNode::Void))
-}
-fn parse_struct_def_<I, I2>(
-    tokens: &mut Peekable<I>,
-    tokens2: &mut Peekable<I2>,
-) -> Result<Option<ASTNode>, String>
-where
-    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
-    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
-{
-    Ok(Some(ASTNode::Void))
-}
-fn parse_any_<I, I2>(
-    tokens: &mut Peekable<I>,
-    tokens2: &mut Peekable<I2>,
-) -> Result<Option<ASTNode>, String>
-where
-    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
-    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
-{
-    Ok(Some(ASTNode::Void))
-}
-fn parse_any_2<I, I2>(
-    tokens: &mut Peekable<I>,
-    tokens2: &mut Peekable<I2>,
-) -> Result<Option<ASTNode>, String>
-where
-    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
-    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
-{
-    Ok(Some(ASTNode::Void))
-}
-fn parse_gate_call_<I, I2>(
-    tokens: &mut Peekable<I>,
-    tokens2: &mut Peekable<I2>,
-) -> Result<Option<ASTNode>, String>
-where
-    I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
-    I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
-{
-    Ok(Some(ASTNode::Void))
-}
+*/
