@@ -40,12 +40,10 @@ void foo(arg: qbit, arg2: qbit){
 // variable declarations
 let name1;
 const name2;
-var name3;
 
 // variable declarations + type
 let name4: qbit;
 const name5: qbit;
-var name6: qbit;
 
 // variable assignments
 name1 = 0;
@@ -53,40 +51,48 @@ name1 = 0;
 // variable declarations + assignments
 let name7 = 0;
 const name8 = 0;
-var name9 = 0;
 
 // variable declarations + type + assignments
-let name10: type = 0;
-const name11: type = 0;
-var name12: type = 0;
+let name10: qbit = 0;
+const name11: qbit = 0;
 
 // structures
 struct name13{
-  var field1: qbit;
-  var field2: qbit;
+  let field1: qbit;
+  let field2: qbit;
 }
 
 // pointers
 let ref1: *qbit = &name7;
 
 // arrays
-let arr: qbit[10] = [name1, name2, name3];
+let arr: qbit[10];
 
 // dereferencing pointers
-let val: type = *ref;
+let val: qbit = *ref;
 
 // pointer types default to nullptr
-let ref2: *type;
+let ref2: *qbit;
 
 // const pointers must be assigned
-const ref3: *type; // error
+const ref3: *qbit; // error
 
 // Gates and Functions are to be called by name
 H(&name2);
-foo(name3, name1);
+foo(name2, name1);
 
 // Gates default to passing by reference and returning void
-let a = H(&b) // error, returns void
+let a = H(&name1); // error, returns void
+
+// initializing a struct
+let c2: name13;
+
+c2.field1 = 0;
+c2.field2 = 0;
+
+// accessing an array
+
+arr[0] = 1;
 
 // Macros
 /*
@@ -97,7 +103,7 @@ let a = H(&b) // error, returns void
 */ 
 // commented out so that the compiler doesn't try to parse it, this should have been already removed from the preprocessor.
 
-// default types3 
+// default types
 /*
 void // *void
 qbit // *qbit, qbit[size]

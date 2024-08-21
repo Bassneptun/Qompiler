@@ -1,13 +1,10 @@
-mod code_gen;
 mod parser;
 mod tokenizer;
 
-use std::collections::HashMap;
+use parser::{from_tokens, ASTNode};
+use tokenizer::filter_all;
 
-use code_gen::{convert_to_string, Comptime};
-use parser::ASTNode;
-
-use crate::parser::parse;
+use crate::parser::parse_;
 use crate::tokenizer::{filter50s, tokenize, __TOKENS};
 
 fn main() {
@@ -16,9 +13,10 @@ fn main() {
     let code = std::fs::read_to_string(path).unwrap();
     let mut tokens = tokenize(&code);
     tokens = filter50s(tokens.clone());
+    tokens = filter_all(tokens.clone());
 
-    for (i, tok) in __TOKENS.iter().enumerate() {
-        println!("{}, {}", tok, i);
+    for (i, tok) in __TOKENS[3..].iter().enumerate() {
+        println!("{}, {}", tok, i + 1);
     }
 
     for (i, token) in tokens.iter().enumerate() {
@@ -27,12 +25,10 @@ fn main() {
 
     println!("{:?}", tokens.iter().map(|t| t.token).collect::<Vec<_>>());
 
-    let ast = parse(tokens);
+    let ast = parse_(from_tokens(tokens.clone()), tokens.clone());
     println!("{:#?}", ast);
-    for (i, token) in __TOKENS.iter().enumerate() {
-        println!("{}: {:?}", i, token);
-    }
-    if let ASTNode::Program(ref children) = ast {
+    /*
+    if let Ok(ASTNode::Program(ref children)) = ast {
         for child in children {
             println!("{}", convert_to_string(&child))
         }
@@ -51,4 +47,5 @@ fn main() {
     };
     let out = code_gen::generate_code(&ast, cmpt).program;
     println!("{:?}", out)
+    */
 }

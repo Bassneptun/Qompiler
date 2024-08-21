@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-pub const __TOKENS: [&str; 47] = [
+pub const __TOKENS: [&str; 46] = [
     "//", "*/", "/*", "(", ")", "{", "}", "[", "]", ":", ";", ",", "=", "&", "*", "..", "let",
-    "var", "const", "struct", "qbit", "void", "#", "macro", "gate", "H", "PX", "PY", "PZ", "CNT",
-    "CY", "ID", "TOF", "RX", "RY", "RZ", "S", "T", "SDG", "TDG", ".", "if", "for", "in", "return",
+    "const", "struct", "qbit", "void", "#", "macro", "gate", "H", "PX", "PY", "PZ", "CNT", "CY",
+    "ID", "TOF", "RX", "RY", "RZ", "S", "T", "SDG", "TDG", ".", "if", "for", "in", "return",
     "break", "$",
 ];
 
@@ -157,4 +157,14 @@ pub fn filter50s(mut tokens: Vec<Token>) -> Vec<Token> {
         }
     }
     tokens
+}
+
+pub fn filter_all(tokens: Vec<Token>) -> Vec<Token> {
+    let mut cpy = tokens.clone();
+    for t in &mut cpy {
+        if is_num(t.value.clone()) && (t.token == 50 || t.token == 51) {
+            t.token = 52;
+        }
+    }
+    cpy
 }

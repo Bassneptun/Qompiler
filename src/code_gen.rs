@@ -1,4 +1,4 @@
-use crate::parser::ASTNode;
+/*use crate::parser::ASTNode;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -648,3 +648,4 @@ pub fn generate_code(root: &ASTNode, comptime: Comptime) -> Comptime {
     }
     return comptime_;
 }
+*/
