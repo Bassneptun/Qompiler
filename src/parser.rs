@@ -94,6 +94,7 @@ pub enum ASTNode {
     PointerType {
         type_: Box<ASTNode>,
     },
+    Qdit,
 }
 
 #[derive(Debug)]
@@ -130,6 +131,7 @@ pub enum Tok {
     New,
     Old,
     Num,
+    Qudit,
 }
 
 pub fn from_tokens(tokens: Vec<Token>) -> Vec<Tok> {
@@ -165,6 +167,7 @@ pub fn from_tokens(tokens: Vec<Token>) -> Vec<Tok> {
             43 => toks.push(Tok::Return),
             44 => toks.push(Tok::Break),
             45 => toks.push(Tok::PHPRef),
+            46 => toks.push(Tok::Qudit),
             50 => toks.push(Tok::New),
             51 => toks.push(Tok::Old),
             52 => toks.push(Tok::Num),
@@ -207,6 +210,7 @@ where
     match tokens.peek() {
         Some(Tok::Qbit) => parse_function_def_(tokens, tokens2),
         Some(Tok::Void) => parse_function_def_(tokens, tokens2),
+        Some(Tok::Qudit) => parse_function_def_(tokens, tokens2),
         //Some(Tok::If) => parse_if(tokens, tokens2),
         Some(Tok::For) => parse_for_(tokens, tokens2),
         Some(Tok::VarDecl) => parse_var_decl(tokens, tokens2),
@@ -992,6 +996,112 @@ where
         Some(Tok::Void) => {
             advance(tokens, tokens2);
             Ok(Some(ASTNode::Void))
+        }
+        Some(Tok::Qdit) => {
+            advance(tokens, tokens2);
+            match tokens.peek() {
+                None => Ok(Some(ASTNode::Qdit)),
+                Some(Tok::OSBracket) => {
+                    advance(tokens, tokens2);
+                    match tokens.peek() {
+                        Some(Tok::Num) => {
+                            let n: i32 = tokens2.peek().unwrap().clone().value.parse().unwrap();
+                            advance(tokens, tokens2);
+                            match tokens.peek() {
+                                None => Err("Expected ], got None".to_string()),
+                                Some(Tok::CSBracket) => {
+                                    advance(tokens, tokens2);
+                                    Ok(Some(ASTNode::ArrayType {
+                                        type_: Box::new(ASTNode::Qdit),
+                                        size: Box::new(ASTNode::Num(n)),
+                                    }))
+                                }
+                                Some(_) => Err(format!(
+                                    "expected ], got {}",
+                                    tokens2.peek().unwrap().value.clone()
+                                )),
+                            }
+                        }
+                        Some(Tok::PHPRef) => {
+                            advance(tokens, tokens2);
+                            match tokens.peek() {
+                                None => Err("Expected index to external variable array, got None"
+                                    .to_string()),
+                                Some(Tok::Num) => {
+                                    let n: u32 =
+                                        tokens2.peek().unwrap().clone().value.parse().unwrap();
+                                    advance(tokens, tokens2);
+                                    match tokens.peek() {
+                                        None => Err("Expected ], got None".to_string()),
+                                        Some(Tok::CSBracket) => {
+                                            advance(tokens, tokens2);
+                                            Ok(Some(ASTNode::ArrayType {
+                                                type_: Box::new(ASTNode::Qdit),
+                                                size: Box::new(ASTNode::ExternArg {
+                                                    idx: Box::new(ASTNode::ArrayIndex(n)),
+                                                }),
+                                            }))
+                                        }
+                                        Some(_) => Err(format!(
+                                            "expected ], got {}",
+                                            tokens2.peek().unwrap().value.clone()
+                                        )),
+                                    }
+                                }
+                                Some(Tok::Old) => {
+                                    let n = tokens2.peek().unwrap().value.clone();
+                                    advance(tokens, tokens2);
+                                    match tokens.peek() {
+                                        None => Err("Expected ], got None".to_string()),
+                                        Some(Tok::CSBracket) => {
+                                            advance(tokens, tokens2);
+                                            Ok(Some(ASTNode::ArrayType {
+                                                type_: Box::new(ASTNode::Qdit),
+                                                size: Box::new(ASTNode::ExternArg {
+                                                    idx: Box::new(ASTNode::IntCall { name: n }),
+                                                }),
+                                            }))
+                                        }
+                                        Some(_) => Err(format!(
+                                            "expected ], got {}",
+                                            tokens2.peek().unwrap().value.clone()
+                                        )),
+                                    }
+                                }
+                                Some(_) => Err(format!(
+                                    "expected num or for variable, got {}",
+                                    tokens2.peek().unwrap().value.clone()
+                                )),
+                            }
+                        }
+                        Some(Tok::Old) => {
+                            let name = tokens2.peek().unwrap().value.clone();
+                            advance(tokens, tokens2);
+                            if let Some(Tok::CSBracket) = tokens.peek() {
+                                advance(tokens, tokens2);
+                                Ok(Some(ASTNode::ArrayType {
+                                    type_: Box::new(ASTNode::Qdit),
+                                    size: Box::new(ASTNode::IntCall { name }),
+                                }))
+                            } else {
+                                Err(format!(
+                                    "expected ], got {}",
+                                    tokens2.peek().unwrap().value.clone()
+                                ))
+                            }
+                        }
+                        _ => Err(format!(
+                            "Expected literal or iterator varible, got {}",
+                            tokens2
+                                .peek()
+                                .expect("Expected literal or iterator variable, got None")
+                                .value
+                                .clone()
+                        )),
+                    }
+                }
+                Some(_) => Ok(Some(ASTNode::Qdit)),
+            }
         }
         Some(Tok::Qbit) => {
             advance(tokens, tokens2);

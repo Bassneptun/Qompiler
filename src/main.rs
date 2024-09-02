@@ -1,7 +1,11 @@
+mod code_gen;
 mod parser;
 mod tokenizer;
 
-use parser::{from_tokens, ASTNode};
+use std::process::exit;
+
+use code_gen::code_gen;
+use parser::from_tokens;
 use tokenizer::filter_all;
 
 use crate::parser::parse_;
@@ -25,27 +29,19 @@ fn main() {
 
     println!("{:?}", tokens.iter().map(|t| t.token).collect::<Vec<_>>());
 
-    let ast = parse_(from_tokens(tokens.clone()), tokens.clone());
+    let ast = parse_(from_tokens(tokens.clone()), tokens.clone()).expect("failed to parse");
     println!("{:#?}", ast);
-    /*
-    if let Ok(ASTNode::Program(ref children)) = ast {
-        for child in children {
-            println!("{}", convert_to_string(&child))
+    let out = code_gen(ast);
+    println!("1");
+    let o;
+    match out {
+        Ok(out) => {
+            o = out;
+        }
+        Err(e) => {
+            println!("{:?}", e);
+            exit(1);
         }
     }
-    let cmpt: Comptime = Comptime {
-        program: String::new(),
-        functions: HashMap::new(),
-        function_info: HashMap::new(),
-        vars: HashMap::new(),
-        var_info: HashMap::new(),
-        tmp_vars: HashMap::new(),
-        tmp_var_info: HashMap::new(),
-        types: HashMap::new(),
-        structs: HashMap::new(),
-        i: 0,
-    };
-    let out = code_gen::generate_code(&ast, cmpt).program;
-    println!("{:?}", out)
-    */
+    println!("{:?}", o)
 }
