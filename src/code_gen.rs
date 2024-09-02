@@ -48,6 +48,12 @@ where
         ret.push(compt_);
         iterator.next();
     }
+
+    match code_gen_node(iterator, &mut c) {
+        Err(e) => println!("Error: {}", e),
+        Ok(thing_else) => {}
+    }
+
     Ok(c)
 }
 
@@ -87,10 +93,10 @@ where
                 if let Some(_) = value {
                     return Ok(generate_var_decl_td(iterator, cmptime)?.unwrap());
                 } else {
-                    return Err("temporary".to_string());
+                    return gen_var_alloc(iterator, cmptime);
                 }
             }
-            Some(_) => return Err("temporary".to_string()),
+            Some(_) => return gen_var_alloc(iterator, cmptime),
         },
         Some(other) => {
             return Err(
@@ -98,6 +104,7 @@ where
             );
         }
     };
+    Err("nothing got returned".to_string())
 }
 
 fn str_mul(s: String, num: i32) -> String {
@@ -121,7 +128,7 @@ where
             ASTNode::Num(_num) => gen_var_decl_num(iterator, cmptime),
             ASTNode::VariableCall { name: _ } => gen_var_decl_cpy(iterator, cmptime),
             ASTNode::FunctionCall { name, args } => {
-                gen_func_cal(iterator, cmptime);
+                let _ = gen_func_cal(iterator, cmptime);
                 gen_var_decl_cpy(iterator, cmptime)
             }
             _ => Ok(Some(cmptime.clone())),
@@ -213,7 +220,10 @@ where
     match iterator.peek() {
         None => return Err("BACKEND_ERROR: Expected ASTNode::VariableDecl, got None".to_string()),
         Some(ASTNode::VariableDecl {
-            value, name, token, ..
+            value,
+            name: _,
+            token,
+            ..
         }) => match *(value.clone().unwrap()) {
             ASTNode::VariableCall { name } => {
                 let info = cmptime.var_info.get(&name).unwrap();
@@ -257,33 +267,26 @@ where
     I: Iterator<Item = ASTNode>,
 {
     let _ = match iterator.peek() {
-        Some(ASTNode::FunctionCall { name, args }) => {
+        Some(ASTNode::FunctionCall { name: _, args }) => {
             // allocate arguments
             for (i, arg) in args.iter().enumerate() {
                 match arg {
                     ASTNode::VariableDecl { name, .. } => {
-                        println!("1");
                         let info = cmptime.var_info.get(name).unwrap();
-                        println!("1");
                         let n_qbits = info.1;
-                        println!("1");
                         cmptime
                             .vars
                             .insert(format!("arg{i}"), (cmptime.i as usize, 0));
-                        println!("1");
                         cmptime.i += n_qbits as i32;
-                        println!("1");
                         cmptime
                             .var_info
                             .insert(format!("arg{i}"), (false, n_qbits, info.2.clone()));
-                        println!("1");
                         for i in 0..n_qbits as i32 {
                             cmptime.program.push_str(
                                 format!("QAL & 0 $ \"{}\"", format!("{}_{i}", format!("arg{i}")))
                                     .as_str(),
                             )
                         }
-                        println!("1");
                         for i in 0..n_qbits {
                             cmptime.program.push_str(
                                 format!(
@@ -294,7 +297,6 @@ where
                                 .as_str(),
                             );
                         }
-                        println!("1");
                     }
                     _ => return Err("BACKEND_ERROR: Expected VariableDecl ".to_string()),
                 }
@@ -304,6 +306,64 @@ where
         _ => return Err("BACKEND_ERROR: Expected ASTNode::FunctionCall".to_string()),
     };
     Err("".to_string())
+}
+pub fn gen_var_alloc<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => return Err("BACKEND_ERROR: Expected ASTNode::VariableDecl, got None".to_string()),
+        Some(ASTNode::VariableDecl {
+            value: _,
+            name,
+            token,
+            type_,
+        }) => match type_ {
+            None => {
+                return Err("Error: variable declarations need either a type or a value".to_string())
+            }
+            Some(other) => match *other.clone() {
+                ASTNode::ArrayType { type_, size } => {
+                    cmptime
+                        .vars
+                        .insert(name.to_string(), (cmptime.i as usize, 0));
+                    let s;
+                    if let ASTNode::Num(num) = *size.clone() {
+                        s = num;
+                    } else {
+                        return Err("BACKEND_ERROR: Expected ASTNode::Num".to_string());
+                    }
+                    cmptime.i += s as i32;
+                    let n;
+                    match *type_.clone() {
+                        ASTNode::Type { name, specifier: _ } => n = name,
+                        ASTNode::Qbit => n = "Qbit".to_string(),
+                        ASTNode::Qdit => n = "Qdit".to_string(),
+                        ASTNode::Custom => n = "Custom".to_string(),
+                        _ => return Err("BACKEND_ERROR: Expected Type, got other".to_string())?,
+                    }
+                    cmptime
+                        .var_info
+                        .insert(name.to_string(), (*token == 13, s as usize, n));
+
+                    for i in 0..s as i32 {
+                        cmptime
+                            .program
+                            .push_str(format!("QAL & 0 $ \"{}\"", format!("{name}_{i}")).as_str())
+                    }
+                    Ok(cmptime.clone())
+                }
+                _ => todo!(),
+            },
+        },
+        Some(other) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::VariableDecl, got {:?}",
+            other
+        )),
+    }
 }
 
 /*

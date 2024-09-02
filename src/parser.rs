@@ -206,7 +206,6 @@ where
     I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
     I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
 {
-    println!("{:?}", tokens.peek().unwrap());
     match tokens.peek() {
         Some(Tok::Qbit) => parse_function_def_(tokens, tokens2),
         Some(Tok::Void) => parse_function_def_(tokens, tokens2),
@@ -997,7 +996,7 @@ where
             advance(tokens, tokens2);
             Ok(Some(ASTNode::Void))
         }
-        Some(Tok::Qdit) => {
+        Some(Tok::Qudit) => {
             advance(tokens, tokens2);
             match tokens.peek() {
                 None => Ok(Some(ASTNode::Qdit)),
