@@ -1,24 +1,29 @@
 use crate::parser::ASTNode;
 use std::collections::HashMap;
 use std::iter::Peekable;
+use std::ops::Deref;
 
 #[derive(Debug, Clone)]
 pub struct Comptime {
     pub program: String,
-    pub functions: HashMap<String, String>,
-    pub function_info: HashMap<String, (Vec<String>, String)>, // signature
-    pub vars: HashMap<String, (usize, usize)>,                 // position in memory
-    pub var_info: HashMap<String, (bool, usize, String)>,      // is_const, size, type
-    pub tmp_vars: HashMap<String, (usize, usize)>,             // position in memory
-    pub tmp_var_info: HashMap<String, (usize, String)>,        // size, type
-    pub types: HashMap<String, usize>,                         // name to size of type
-    pub structs: HashMap<(String, String), (usize, String)>, // name of type + field to size of field and type
+    pub functions: HashMap<String, ASTNode>,
+    pub function_info: HashMap<String, (Vec<ASTNode>, ASTNode)>, // signature
+    pub function_args: HashMap<String, Vec<String>>,             // signature
+    pub vars: HashMap<String, (usize, usize)>,                   // position in memory
+    pub var_info: HashMap<String, (bool, usize, ASTNode)>,       // is_const, size, type
+    //pub tmp_vars: HashMap<String, (usize, usize)>,             // position in memory
+    //pub tmp_var_info: HashMap<String, (usize, String)>,        // size, type
+    //pub types: HashMap<String, usize>,                         // name to size of type
+    //pub structs: HashMap<(String, String), (usize, String)>, // name of type + field to size of field and type
+    pub aliass: HashMap<String, String>,
     pub i: i32,
 }
 
 pub fn code_gen(ast: ASTNode) -> Result<Comptime, String> {
     let mut nodes_iterator;
     if let ASTNode::Program(nodes) = ast {
+        nodes_iterator = nodes.into_iter().peekable();
+    } else if let ASTNode::Block(nodes) = ast {
         nodes_iterator = nodes.into_iter().peekable();
     } else {
         return Err("AST_ERROR: Expected Program node, got something else.".to_string());
@@ -35,12 +40,14 @@ where
         program: String::new(),
         functions: HashMap::new(),
         function_info: HashMap::new(),
+        function_args: HashMap::new(),
         vars: HashMap::new(),
         var_info: HashMap::new(),
-        tmp_vars: HashMap::new(),
-        tmp_var_info: HashMap::new(),
-        types: HashMap::new(),
-        structs: HashMap::new(),
+        //tmp_vars: HashMap::new(),
+        //tmp_var_info: HashMap::new(),
+        //types: HashMap::new(),
+        //structs: HashMap::new(),
+        aliass: HashMap::new(),
         i: 0,
     };
     let mut ret: Vec<_> = vec![];
@@ -51,7 +58,7 @@ where
 
     match code_gen_node(iterator, &mut c) {
         Err(e) => println!("Error: {}", e),
-        Ok(thing_else) => {}
+        Ok(_thing_else) => {}
     }
 
     Ok(c)
@@ -65,11 +72,12 @@ where
     I: Iterator<Item = ASTNode>,
 {
     match iterator.peek() {
-        None => Err("Expected Node, got None".to_owned()),
+        None => Err("Expected Node, got None1".to_owned()),
         Some(ASTNode::VariableDecl { .. }) => generate_var_decl(iterator, cmptime),
-        //Some(ASTNode::FunctionDef { .. }) => generate_func_decl(iterator, cmptime),
-        //Some(ASTNode::For { .. }) => generate_for(iterator, cmptime),
-        //Some(ASTNode::GateCall { .. }) => generate_gate_call(iterator, cmptime),
+        Some(ASTNode::FunctionDef { .. }) => gen_func_decl(iterator, cmptime),
+        Some(ASTNode::For { .. }) => generate_for(iterator, cmptime),
+        Some(ASTNode::Assignment { .. }) => generate_assignment(iterator, cmptime),
+        Some(ASTNode::GateCall { .. }) => generate_gate_call(iterator, cmptime),
         _ => Err("".to_string()),
     }
 }
@@ -104,15 +112,6 @@ where
             );
         }
     };
-    Err("nothing got returned".to_string())
-}
-
-fn str_mul(s: String, num: i32) -> String {
-    let mut s_ret: String = String::new();
-    for _ in 0..num {
-        s_ret.push_str(s.clone().as_str());
-    }
-    s_ret
 }
 
 pub fn generate_var_decl_td<I>(
@@ -127,8 +126,8 @@ where
         Some(ASTNode::VariableDecl { value, .. }) => match *value.clone().unwrap() {
             ASTNode::Num(_num) => gen_var_decl_num(iterator, cmptime),
             ASTNode::VariableCall { name: _ } => gen_var_decl_cpy(iterator, cmptime),
-            ASTNode::FunctionCall { name, args } => {
-                let _ = gen_func_cal(iterator, cmptime);
+            ASTNode::FunctionCall { name: _, args: _ } => {
+                let _ = gen_func_call(iterator, cmptime);
                 gen_var_decl_cpy(iterator, cmptime)
             }
             _ => Ok(Some(cmptime.clone())),
@@ -170,7 +169,14 @@ where
                 cmptime.i += n_qbits as i32;
                 cmptime.var_info.insert(
                     name.to_string(),
-                    (*token == 13, n_qbits as usize, format!("Array[Qbit]")),
+                    (
+                        *token == 13,
+                        n_qbits as usize,
+                        ASTNode::ArrayType {
+                            type_: Box::new(ASTNode::Qbit),
+                            size: Box::new(ASTNode::Num(num)),
+                        },
+                    ),
                 );
 
                 for i in 0..n_qbits as i32 {
@@ -200,6 +206,7 @@ where
     }
 }
 
+/*
 pub fn generate_var_decl_<I>(
     iterator: &mut Peekable<I>,
     cmptime: &mut Comptime,
@@ -208,6 +215,144 @@ where
     I: Iterator<Item = ASTNode>,
 {
     Err("".to_string())
+}
+*/
+
+pub fn gen_func_decl<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::FuncDef, got None".to_string()),
+        Some(ASTNode::FunctionDef {
+            name,
+            ret_type,
+            in_type,
+            body,
+        }) => {
+            let mut input_types: Vec<ASTNode> = vec![];
+            let mut input_names: Vec<String> = vec![];
+
+            for t in in_type.clone() {
+                match t {
+                    ASTNode::VariableDecl { type_, name, .. } => {
+                        input_types.push(*type_.unwrap());
+                        input_names.push(name.clone());
+                    }
+                    _ => return Err("BACKEND_ERROR: Expected ASTNode::VariableDecl".to_string()),
+                }
+            }
+            cmptime
+                .function_info
+                .insert(name.clone(), (input_types.clone(), *ret_type.clone()));
+
+            cmptime.function_args.insert(name.clone(), input_names);
+
+            if body.is_none() {
+                cmptime.functions.insert(name.clone(), ASTNode::Void);
+                return Ok(cmptime.clone());
+            } else {
+                cmptime
+                    .functions
+                    .insert(name.clone(), *body.clone().unwrap());
+            }
+            Ok(cmptime.clone())
+        }
+        _ => Err("BACKEND_ERROR: Expected ASTNode::FuncDef".to_string()),
+    }
+}
+
+pub fn generate_assignment<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::Assignment, got None".to_string()),
+        Some(ASTNode::Assignment { lval, value }) => match *value.clone() {
+            ASTNode::VariableCall { name } => {
+                let info = cmptime.var_info.get(&name).unwrap();
+                let n_qbits = info.1;
+
+                let mut name_ = match *lval.clone() {
+                    ASTNode::VariableCall { name } => name,
+                    _ => return Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+                };
+                name_ = if !cmptime.aliass.contains_key(&name_) {
+                    name_.clone()
+                } else {
+                    cmptime.aliass.get(&name_).unwrap().clone()
+                };
+
+                for i in 0..n_qbits {
+                    cmptime.program.push_str(
+                        format!(
+                            "CPY ${} ${}\n",
+                            format!("{}_{}", name, i),
+                            format!("{}_{}", name_, i)
+                        )
+                        .as_str(),
+                    );
+                }
+                Ok(cmptime.clone())
+            }
+            ASTNode::Num(num) => {
+                let mut name_ = match *lval.clone() {
+                    ASTNode::VariableCall { name } => name,
+                    _ => return Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+                };
+                name_ = if !cmptime.aliass.contains_key(&name_) {
+                    name_.clone()
+                } else {
+                    cmptime.aliass.get(&name_).unwrap().clone()
+                };
+                let mut n_qbits = if num > 1 {
+                    (num.to_owned() as f32).log2().ceil() as u32
+                } else {
+                    1
+                };
+                if num == 2 {
+                    n_qbits = 2;
+                }
+                let qbits_bin: Vec<String> = (0..n_qbits)
+                    .map(|n| ((num.to_owned() >> n) & 1))
+                    .map(|num| format!("{num}"))
+                    .collect();
+                if qbits_bin.len() == 1 {
+                    cmptime.program.push_str(
+                        format!(
+                            "SET ${} {}\n",
+                            format!("{}", name_),
+                            if qbits_bin[0] == "0" { "1 0" } else { "0 1" }
+                        )
+                        .as_str(),
+                    );
+                } else {
+                    for (i, s) in qbits_bin.iter().enumerate() {
+                        cmptime.program.push_str(
+                            format!(
+                                "SET ${} {}\n",
+                                format!("{}_{}", name_, i),
+                                if s == "0" { "1 0" } else { "0 1" }
+                            )
+                            .as_str(),
+                        );
+                    }
+                }
+                Ok(cmptime.clone())
+            }
+            _ => Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+        },
+
+        Some(thing_else) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::Assignment, got {thing_else:?}"
+        )),
+    }
 }
 
 pub fn gen_var_decl_cpy<I>(
@@ -239,12 +384,12 @@ where
                 for i in 0..n_qbits as i32 {
                     cmptime
                         .program
-                        .push_str(format!("QAL & 0 $ \"{}\"", format!("{name}_{i}")).as_str())
+                        .push_str(format!("QAL & 0 $ \"{}\"\n", format!("{name}_{i}")).as_str())
                 }
                 for i in 0..n_qbits {
                     cmptime.program.push_str(
                         format!(
-                            "CPY ${} ${}",
+                            "CPY ${} ${}\n",
                             format!("{}_{}", name, i),
                             format!("{}_{}", "tmp", i)
                         )
@@ -259,7 +404,7 @@ where
     }
 }
 
-pub fn gen_func_cal<I>(
+pub fn gen_func_call<I>(
     iterator: &mut Peekable<I>,
     cmptime: &mut Comptime,
 ) -> Result<Option<Comptime>, String>
@@ -267,40 +412,28 @@ where
     I: Iterator<Item = ASTNode>,
 {
     let _ = match iterator.peek() {
-        Some(ASTNode::FunctionCall { name: _, args }) => {
+        Some(ASTNode::FunctionCall {
+            name: func_name,
+            args,
+        }) => {
             // allocate arguments
             for (i, arg) in args.iter().enumerate() {
-                match arg {
-                    ASTNode::VariableDecl { name, .. } => {
-                        let info = cmptime.var_info.get(name).unwrap();
-                        let n_qbits = info.1;
-                        cmptime
-                            .vars
-                            .insert(format!("arg{i}"), (cmptime.i as usize, 0));
-                        cmptime.i += n_qbits as i32;
-                        cmptime
-                            .var_info
-                            .insert(format!("arg{i}"), (false, n_qbits, info.2.clone()));
-                        for i in 0..n_qbits as i32 {
-                            cmptime.program.push_str(
-                                format!("QAL & 0 $ \"{}\"", format!("{}_{i}", format!("arg{i}")))
-                                    .as_str(),
-                            )
-                        }
-                        for i in 0..n_qbits {
-                            cmptime.program.push_str(
-                                format!(
-                                    "CPY ${} ${}",
-                                    format!("arg{i}"),
-                                    format!("{}_{}", "tmp", i)
-                                )
-                                .as_str(),
-                            );
-                        }
-                    }
+                let _ = match arg {
+                    ASTNode::VariableDecl { name, .. } => cmptime.aliass.insert(
+                        name.clone(),
+                        cmptime.function_args.get(func_name).unwrap()[i].clone(),
+                    ),
                     _ => return Err("BACKEND_ERROR: Expected VariableDecl ".to_string()),
-                }
+                };
             }
+
+            // call function
+            cmptime.program.push_str(
+                code_gen(cmptime.functions.get(&func_name.clone()).unwrap().clone())
+                    .unwrap()
+                    .program
+                    .as_str(),
+            );
         }
         None => return Err("BACKEND_ERROR: Expected ASTNode::FunctionCall, got None".to_string()),
         _ => return Err("BACKEND_ERROR: Expected ASTNode::FunctionCall".to_string()),
@@ -326,7 +459,7 @@ where
                 return Err("Error: variable declarations need either a type or a value".to_string())
             }
             Some(other) => match *other.clone() {
-                ASTNode::ArrayType { type_, size } => {
+                ASTNode::ArrayType { size, .. } => {
                     cmptime
                         .vars
                         .insert(name.to_string(), (cmptime.i as usize, 0));
@@ -337,22 +470,15 @@ where
                         return Err("BACKEND_ERROR: Expected ASTNode::Num".to_string());
                     }
                     cmptime.i += s as i32;
-                    let n;
-                    match *type_.clone() {
-                        ASTNode::Type { name, specifier: _ } => n = name,
-                        ASTNode::Qbit => n = "Qbit".to_string(),
-                        ASTNode::Qdit => n = "Qdit".to_string(),
-                        ASTNode::Custom => n = "Custom".to_string(),
-                        _ => return Err("BACKEND_ERROR: Expected Type, got other".to_string())?,
-                    }
-                    cmptime
-                        .var_info
-                        .insert(name.to_string(), (*token == 13, s as usize, n));
+                    cmptime.var_info.insert(
+                        name.to_string(),
+                        (*token == 13, s as usize, *type_.clone().unwrap()),
+                    );
 
                     for i in 0..s as i32 {
                         cmptime
                             .program
-                            .push_str(format!("QAL & 0 $ \"{}\"", format!("{name}_{i}")).as_str())
+                            .push_str(format!("QAL & 0 $ \"{}\"\n", format!("{name}_{i}")).as_str())
                     }
                     Ok(cmptime.clone())
                 }
@@ -363,6 +489,154 @@ where
             "BACKEND_ERROR: Expected ASTNode::VariableDecl, got {:?}",
             other
         )),
+    }
+}
+
+pub fn generate_for<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::For, got None".to_string()),
+        Some(ASTNode::For { container, .. }) => match *container.clone() {
+            ASTNode::VariableCall { name } => {
+                let type_ = cmptime.var_info.get(&name.clone()).unwrap().2.clone();
+                println!("Type: {type_:?}");
+                match type_ {
+                    ASTNode::ArrayType { .. } => {
+                        return gen_for_array(iterator, cmptime);
+                    }
+                    _ => todo!(),
+                }
+            }
+            _ => Err("".to_string()),
+        },
+        Some(thing_else) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::For, got {thing_else:?}"
+        )),
+    }
+}
+pub fn gen_for_array<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::For, got None".to_string()),
+        Some(ASTNode::For {
+            container,
+            alias,
+            body,
+            ..
+        }) => match *container.clone() {
+            ASTNode::VariableCall { name } => {
+                let name = if !cmptime.aliass.contains_key(&name) {
+                    name.clone()
+                } else {
+                    cmptime.aliass.get(&name).unwrap().clone()
+                };
+                let type_ = cmptime.var_info.get(&name.clone()).unwrap().2.clone();
+                match type_ {
+                    ASTNode::ArrayType { type_, size } => {
+                        let _s;
+                        match *size.clone() {
+                            ASTNode::Num(num) => _s = num,
+                            _ => {
+                                return Err("BACKEND_ERROR: Expected ASTNode::Num".to_string());
+                            }
+                        }
+                        cmptime.vars.insert(alias.clone(), (cmptime.i as usize, 0));
+                        let incr = match *type_.clone() {
+                            ASTNode::Type { name: _, specifier } => match *specifier {
+                                ASTNode::Qbit => 1,
+                                _ => 0,
+                            },
+                            ASTNode::Qbit => 1,
+                            _ => 0,
+                        };
+
+                        cmptime.i += incr as i32;
+                        cmptime
+                            .var_info
+                            .insert(alias.clone(), (true, incr, *type_.clone()));
+
+                        if body.is_none() {
+                            return Ok(cmptime.clone());
+                        }
+
+                        let size_ = match *size.clone() {
+                            ASTNode::Num(num) => num,
+                            _ => {
+                                return Err("BACKEND_ERROR: Expected ASTNode::Num".to_string());
+                            }
+                        };
+
+                        match body.clone().unwrap().deref() {
+                            ASTNode::Block(nodes) => {
+                                for i__ in 0..size_ {
+                                    cmptime
+                                        .aliass
+                                        .insert(alias.clone(), format!("{}_{i__}", name.clone()));
+                                    let mut it = nodes.clone().into_iter().peekable();
+                                    let _ = code_gen_node(&mut it, cmptime);
+                                }
+                            }
+                            _ => return Err("BACKEND_ERROR: Expected ASTNode::Block".to_string()),
+                        };
+                        Ok(cmptime.clone())
+                    }
+                    _ => Err(format!(
+                        "BACKEND_ERROR: Expected ASTNode::ArrayType, got {type_:?}"
+                    )),
+                }
+            }
+            _ => Err("".to_string()),
+        },
+        Some(thing_else) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::For, got {thing_else:?}"
+        )),
+    }
+}
+
+pub fn fuck_join(s: Vec<ASTNode>, cmptime: &mut Comptime) -> String {
+    let mut ret: String = String::new();
+    for s_ in s {
+        ret.push('$');
+        let _ = match s_ {
+            ASTNode::VariableCall { name } => {
+                if !cmptime.aliass.contains_key(&name) {
+                    ret.push_str(name.as_str())
+                } else {
+                    ret.push_str(cmptime.aliass.get(&name).unwrap().as_str())
+                }
+            }
+            _ => return "".to_string(),
+        };
+        ret.push_str(" ");
+    }
+    ret
+}
+
+pub fn generate_gate_call<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected Node, got None2".to_string()),
+        Some(ASTNode::GateCall { name, args }) => {
+            let var_name = &format!("{name} {}\n", fuck_join(args.clone(), cmptime));
+            cmptime.program.push_str(var_name.as_str());
+            Ok(cmptime.clone())
+        }
+        Some(other) => Err(format!("BACKEND_ERROR: Expected Node, got {other:?}")),
     }
 }
 

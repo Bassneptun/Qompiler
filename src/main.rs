@@ -9,7 +9,7 @@ use parser::from_tokens;
 use tokenizer::filter_all;
 
 use crate::parser::parse_;
-use crate::tokenizer::{filter50s, tokenize, __TOKENS};
+use crate::tokenizer::{filter50s, tokenize};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -19,20 +19,19 @@ fn main() {
     tokens = filter50s(tokens.clone());
     tokens = filter_all(tokens.clone());
 
-    for (i, tok) in __TOKENS[3..].iter().enumerate() {
-        println!("{}, {}", tok, i + 1);
-    }
+    let ast = parse_(from_tokens(tokens.clone()), tokens.clone());
 
-    for (i, token) in tokens.iter().enumerate() {
-        println!("{}: {:?}", i, token);
-    }
+    let ast_ = match ast {
+        Ok(ast) => ast,
+        Err(e) => {
+            println!("{:?}", e);
+            exit(1);
+        }
+    };
 
-    println!("{:?}", tokens.iter().map(|t| t.token).collect::<Vec<_>>());
+    println!("{:#?}", ast_);
 
-    let ast = parse_(from_tokens(tokens.clone()), tokens.clone()).expect("failed to parse");
-    println!("{:#?}", ast);
-    let out = code_gen(ast);
-    println!("1");
+    let out = code_gen(ast_);
     let o;
     match out {
         Ok(out) => {
@@ -43,5 +42,5 @@ fn main() {
             exit(1);
         }
     }
-    println!("{:?}", o)
+    println!("{o:#?}\n\n{}", o.program);
 }
