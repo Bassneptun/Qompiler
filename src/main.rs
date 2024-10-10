@@ -19,6 +19,8 @@ fn main() {
     tokens = filter50s(tokens.clone());
     tokens = filter_all(tokens.clone());
 
+    println!("{:#?}", tokens);
+
     let ast = parse_(from_tokens(tokens.clone()), tokens.clone());
 
     let ast_ = match ast {

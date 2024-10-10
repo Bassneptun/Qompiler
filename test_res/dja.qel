@@ -1,0 +1,7 @@
+let i = 0;
+let qs: qbit[5];
+for (i in qs){
+  i = 0;
+}
+
+

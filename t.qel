@@ -1,0 +1,11 @@
+  let is: qbit[2];
+  for(t in is){
+    t = 0;
+  }
+  for(i in 0..2){
+    RX(is[i], $i);
+  }
+  for(j in 0..2){
+    RY(is[j], $i);
+  }
+  return is;

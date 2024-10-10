@@ -91,6 +91,7 @@ pub enum ASTNode {
     IntCall {
         name: String,
     },
+    // PointerType, not yet implemented
     PointerType {
         type_: Box<ASTNode>,
     },
@@ -682,7 +683,11 @@ where
     I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
     I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
 {
-    let name = tokens2.peek().unwrap().value.clone();
+    let name = match tokens.peek() {
+        None => return Err("Expected name, got None".to_string()),
+        Some(Tok::GateCall) => tokens2.peek().unwrap().value.clone(),
+        Some(other) => return Err(format!("Expected name, got {other:?}")),
+    };
     advance(tokens, tokens2);
 
     match tokens.peek() {
