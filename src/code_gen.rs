@@ -18,6 +18,7 @@ pub struct Comptime {
     //pub structs: HashMap<(String, String), (usize, String)>, // name of type + field to size of field and type
     pub aliass: HashMap<String, String>,
     pub i: i32,
+    pub j: i32,
 }
 
 pub fn code_gen(ast: ASTNode) -> Result<Comptime, String> {
@@ -51,6 +52,7 @@ where
         //structs: HashMap::new(),
         aliass: HashMap::new(),
         i: 0,
+        j: 0,
     };
     while let Ok(_) = code_gen_node(iterator, &mut c) {
         iterator.next();
@@ -83,7 +85,36 @@ where
     }
 }
 
-pub fn generate_return<I>(
+fn generate_return_dal<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::Return, got None".to_string()),
+        Some(ASTNode::Return(value)) => match *value.clone() {
+            ASTNode::VariableCall { name } => {
+                cmptime
+                    .program
+                    .push_str(format!("DAL & 0 $ \"TMP_0\"\n").as_str());
+                cmptime
+                    .program
+                    .push_str(format!("DCP $TMP_0 ${}\n", name).as_str());
+                Ok(cmptime.clone())
+            }
+            _ => Err(format!(
+                "BACKEND_ERROR: Expected ASTNode::VariableCall, got {value:?}"
+            )),
+        },
+        Some(other) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::Return, got {other:?}"
+        )),
+    }
+}
+
+fn generate_return_qal<I>(
     iterator: &mut Peekable<I>,
     cmptime: &mut Comptime,
 ) -> Result<Comptime, String>
@@ -95,7 +126,6 @@ where
         Some(ASTNode::Return(value)) => match *value.clone() {
             ASTNode::VariableCall { name } => {
                 let target_size = if !cmptime.aliass.contains_key(&name) {
-                    println!("{:#?}", cmptime.aliass);
                     cmptime.var_info.get(&name).unwrap().1
                 } else {
                     cmptime
@@ -115,6 +145,36 @@ where
                         .push_str(format!("CPY $TMP_{} ${}\n", i, name).as_str());
                 }
                 Ok(cmptime.clone())
+            }
+            _ => Err(format!(
+                "BACKEND_ERROR: Expected ASTNode::VariableCall, got {value:?}"
+            )),
+        },
+        Some(other) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::Return, got {other:?}"
+        )),
+    }
+}
+
+pub fn generate_return<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::Return, got None".to_string()),
+        Some(ASTNode::Return(value)) => match *value.clone() {
+            ASTNode::VariableCall { name } => {
+                match cmptime.var_info.get(&name).unwrap().2 {
+                    ASTNode::ArrayType { .. } => generate_return_qal(iterator, cmptime),
+                    ASTNode::Qbit => generate_return_qal(iterator, cmptime),
+                    ASTNode::Qdit => generate_return_dal(iterator, cmptime),
+                    _ => Err(format!(
+                        "BACKEND_ERROR: Expected ASTNode::ArrayType, ASTNode::Qdit or ASTNode::Qbit, got {value:?}"
+                    )),
+                }
             }
             _ => Err(format!(
                 "BACKEND_ERROR: Expected ASTNode::VariableCall, got {value:?}"
@@ -399,7 +459,7 @@ where
     }
 }
 
-pub fn gen_var_decl_cpy<I>(
+pub fn gen_var_decl_cpy_qb<I>(
     iterator: &mut Peekable<I>,
     cmptime: &mut Comptime,
 ) -> Result<Option<Comptime>, String>
@@ -446,7 +506,85 @@ where
                         .program
                         .push_str(format!("FRE & $ \"{}\"\n", format!("TMP_{}", i)).as_str());
                 }
-                Ok(None)
+                Ok(Some(cmptime.clone()))
+            }
+            _ => return Err("BACKEND_ERROR: Expected Num, as Num was found earlier".to_string()),
+        },
+        _ => return Err("BACKEND_ERROR: Expected Num, as Num was found earlier".to_string()),
+    }
+}
+
+pub fn gen_var_decl_cpy_qd<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Option<Comptime>, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => return Err("BACKEND_ERROR: Expected ASTNode::VariableDecl, got None".to_string()),
+        Some(ASTNode::VariableDecl {
+            value,
+            name: _,
+            token,
+            ..
+        }) => match *(value.clone().unwrap()) {
+            ASTNode::VariableCall { name } => {
+                let info = cmptime.var_info.get(&name).unwrap();
+                cmptime
+                    .vars
+                    .insert(name.to_string(), (cmptime.j as usize, 0));
+                cmptime.j += 1;
+                cmptime
+                    .var_info
+                    .insert(name.to_string(), (*token == 13, 1, info.2.clone()));
+
+                cmptime
+                    .program
+                    .push_str(format!("DAL & 0 $ \"{}\"\n", format!("{name}")).as_str());
+
+                cmptime.program.push_str(
+                    format!("DCP ${} ${}\n", format!("{}", name), format!("TMP_0")).as_str(),
+                );
+
+                cmptime
+                    .program
+                    .push_str(format!("DFR & $ \"{}\"\n", "TMP_0").as_str());
+
+                Ok(Some(cmptime.clone()))
+            }
+            _ => return Err("BACKEND_ERROR: Expected Num, as Num was found earlier".to_string()),
+        },
+        _ => return Err("BACKEND_ERROR: Expected Num, as Num was found earlier".to_string()),
+    }
+}
+
+pub fn gen_var_decl_cpy<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Option<Comptime>, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => return Err("BACKEND_ERROR: Expected ASTNode::VariableDecl, got None".to_string()),
+        Some(ASTNode::VariableDecl { value, name: _, .. }) => match *(value.clone().unwrap()) {
+            ASTNode::VariableCall { name } => {
+                let info = cmptime.var_info.get(&name).unwrap().2.clone();
+                match info {
+                    ASTNode::Qdit => {
+                        gen_var_decl_cpy_qd(iterator, cmptime)
+                    },
+                    ASTNode::Qbit => {
+                        gen_var_decl_cpy_qb(iterator, cmptime)
+                    },
+                    ASTNode::ArrayType { .. } => {
+                        gen_var_decl_cpy_qb(iterator, cmptime)
+                    },
+                    other => {
+                        return Err(format!("BACKEND_ERROR: Expected ASTNode::ArrayType, ASTNode::Qdit or ASTNode::Qbit, got {other:?}"))
+                    }
+                }
             }
             _ => return Err("BACKEND_ERROR: Expected Num, as Num was found earlier".to_string()),
         },
@@ -547,6 +685,32 @@ where
                             .program
                             .push_str(format!("QAL & 0 $ \"{}\"\n", format!("{name}_{i}")).as_str())
                     }
+                    Ok(cmptime.clone())
+                }
+                ASTNode::Qbit => {
+                    cmptime
+                        .vars
+                        .insert(name.to_string(), (cmptime.i as usize, 0));
+                    cmptime.i += 1;
+                    cmptime
+                        .var_info
+                        .insert(name.to_string(), (*token == 13, 1, *type_.clone().unwrap()));
+                    cmptime
+                        .program
+                        .push_str(format!("QAL & 0 $ \"{}\"\n", name).as_str());
+                    Ok(cmptime.clone())
+                }
+                ASTNode::Qdit => {
+                    cmptime
+                        .vars
+                        .insert(name.to_string(), (cmptime.i as usize, 0));
+                    cmptime.j += 1;
+                    cmptime
+                        .var_info
+                        .insert(name.to_string(), (*token == 13, 1, *type_.clone().unwrap()));
+                    cmptime
+                        .program
+                        .push_str(format!("DAL & 0 $ \"{}\"\n", name).as_str());
                     Ok(cmptime.clone())
                 }
                 _ => todo!(),
