@@ -330,7 +330,7 @@ where
     I: Iterator<Item = ASTNode>,
 {
     match iterator.peek() {
-        None => Err("BACKEND_ERROR: Expected ASTNode::FuncDef, got None".to_string()),
+        None => Err("BACKEND_ERROR: Expected ASTNode::FunctionDef, got None".to_string()),
         Some(ASTNode::FunctionDef {
             name,
             ret_type,
@@ -369,7 +369,7 @@ where
     }
 }
 
-pub fn generate_assignment<I>(
+pub fn generate_assignment_qb<I>(
     iterator: &mut Peekable<I>,
     cmptime: &mut Comptime,
 ) -> Result<Comptime, String>
@@ -450,6 +450,71 @@ where
                 }
                 Ok(cmptime.clone())
             }
+            _ => Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+        },
+
+        Some(thing_else) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::Assignment, got {thing_else:?}"
+        )),
+    }
+}
+
+pub fn generate_assignment_qd<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::Assignment, got None".to_string()),
+        Some(ASTNode::Assignment { lval, value }) => match *value.clone() {
+            ASTNode::VariableCall { name } => {
+                let mut name_ = match *lval.clone() {
+                    ASTNode::VariableCall { name } => name,
+                    _ => return Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+                };
+                name_ = if !cmptime.aliass.contains_key(&name_) {
+                    name_.clone()
+                } else {
+                    cmptime.aliass.get(&name_).unwrap().clone()
+                };
+
+                cmptime.program.push_str(
+                    format!("CPY ${} ${}\n", format!("{}", name_), format!("{}", name)).as_str(),
+                );
+                Ok(cmptime.clone())
+            }
+            _ => Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+        },
+
+        Some(thing_else) => Err(format!(
+            "BACKEND_ERROR: Expected ASTNode::Assignment, got {thing_else:?}"
+        )),
+    }
+}
+
+pub fn generate_assignment<I>(
+    iterator: &mut Peekable<I>,
+    cmptime: &mut Comptime,
+) -> Result<Comptime, String>
+where
+    I: Iterator<Item = ASTNode>,
+{
+    match iterator.peek() {
+        None => Err("BACKEND_ERROR: Expected ASTNode::Assignment, got None".to_string()),
+        Some(ASTNode::Assignment { lval: _, value }) => match *value.clone() {
+            ASTNode::VariableCall { name } => {
+                match cmptime.var_info.get(&name).unwrap().2 {
+                    ASTNode::ArrayType { .. } => generate_assignment_qd(iterator, cmptime),
+                    ASTNode::Qbit => generate_assignment_qb(iterator, cmptime),
+                    ASTNode::Qdit => generate_assignment_qd(iterator, cmptime),
+                    _ => Err(format!(
+                        "BACKEND_ERROR: Expected ASTNode::ArrayType, ASTNode::Qdit or ASTNode::Qbit, got {value:?}"
+                    )),
+                }
+            }
+            ASTNode::Num(_) => generate_assignment_qb(iterator, cmptime),
             _ => Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
         },
 
