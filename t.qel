@@ -1,11 +1,12 @@
-  let is: qbit[2];
-  for(t in is){
-    t = 0;
-  }
-  for(i in 0..2){
-    RX(is[i], $i);
-  }
-  for(j in 0..2){
-    RY(is[j], $i);
-  }
-  return is;
+let controll: qbit = 1;
+let bit: qbit = 0;
+
+HAD(bit);
+HAD(controll);
+
+let cmb: qudit;
+
+CNT(bit, controll, cmb);
+DPX(cmb);
+TR(cmb, bit, 0);
+MES(bit);

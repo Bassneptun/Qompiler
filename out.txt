@@ -1,0 +1,11 @@
+QAL & 0 $ "controll"
+SET $controll 0 1
+QAL & 0 $ "bit"
+SET $bit 1 0
+HAD $bit 
+HAD $controll 
+DAL % # "cmb"
+CNT $bit $controll %cmb 
+DPX %cmb 
+TR %cmb $bit 0 
+MES $bit 

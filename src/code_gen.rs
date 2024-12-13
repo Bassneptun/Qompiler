@@ -98,10 +98,10 @@ where
             ASTNode::VariableCall { name } => {
                 cmptime
                     .program
-                    .push_str(format!("DAL & 0 $ \"TMP_0\"\n").as_str());
+                    .push_str(format!("DAL % # \"TMP_0\"\n").as_str());
                 cmptime
                     .program
-                    .push_str(format!("DCP $TMP_0 ${}\n", name).as_str());
+                    .push_str(format!("DCP %TMP_0 %{}\n", name).as_str());
                 Ok(cmptime.clone())
             }
             _ => Err(format!(
@@ -200,15 +200,11 @@ where
             value,
             type_,
             token: _,
-        }) => match type_ {
-            None => {
-                if let Some(_) = value {
-                    return Ok(generate_var_decl_td(iterator, cmptime)?.unwrap());
-                } else {
-                    return gen_var_alloc(iterator, cmptime);
-                }
+        }) => match value {
+            Some(_) => {
+                return Ok(generate_var_decl_td(iterator, cmptime)?.unwrap());
             }
-            Some(_) => return gen_var_alloc(iterator, cmptime),
+            None => return gen_var_alloc(iterator, cmptime),
         },
         Some(other) => {
             return Err(
@@ -254,56 +250,81 @@ where
     match iterator.peek() {
         None => return Err("BACKEND_ERROR: Expected ASTNode::VariableDecl, got None".to_string()),
         Some(ASTNode::VariableDecl {
-            value, name, token, ..
+            value,
+            name,
+            token,
+            type_,
         }) => match *(value.clone().unwrap()) {
-            ASTNode::Num(num) => {
-                let mut n_qbits = if num > 1 {
-                    (num.to_owned() as f32).log2().ceil() as u32
-                } else {
-                    1
-                };
+            ASTNode::Num(num) => match type_ {
+                None => {
+                    let mut n_qbits = if num > 1 {
+                        (num.to_owned() as f32).log2().ceil() as u32
+                    } else {
+                        1
+                    };
 
-                if num == 2 {
-                    n_qbits = 2;
-                }
+                    if num == 2 {
+                        n_qbits = 2;
+                    }
 
-                cmptime
-                    .vars
-                    .insert(name.to_string(), (cmptime.i as usize, 0));
-                cmptime.i += n_qbits as i32;
-                cmptime.var_info.insert(
-                    name.to_string(),
-                    (
-                        *token == 13,
-                        n_qbits as usize,
-                        ASTNode::ArrayType {
-                            type_: Box::new(ASTNode::Qbit),
-                            size: Box::new(ASTNode::Num(num)),
-                        },
-                    ),
-                );
-
-                for i in 0..n_qbits as i32 {
                     cmptime
-                        .program
-                        .push_str(format!("QAL & 0 $ \"{}\"\n", format!("{name}_{i}")).as_str())
-                }
-                let qbits_bin: Vec<String> = (0..n_qbits)
-                    .map(|n| ((num.to_owned() >> n) & 1))
-                    .map(|num| format!("{num}"))
-                    .collect();
-                for (i, s) in qbits_bin.iter().enumerate() {
-                    cmptime.program.push_str(
-                        format!(
-                            "SET ${} {}\n",
-                            format!("{}_{}", name, i),
-                            if s == "0" { "1 0" } else { "0 1" }
-                        )
-                        .as_str(),
+                        .vars
+                        .insert(name.to_string(), (cmptime.i as usize, 0));
+                    cmptime.i += n_qbits as i32;
+                    cmptime.var_info.insert(
+                        name.to_string(),
+                        (
+                            *token == 13,
+                            n_qbits as usize,
+                            ASTNode::ArrayType {
+                                type_: Box::new(ASTNode::Qbit),
+                                size: Box::new(ASTNode::Num(num)),
+                            },
+                        ),
                     );
+
+                    for i in 0..n_qbits as i32 {
+                        cmptime
+                            .program
+                            .push_str(format!("QAL & 0 $ \"{}\"\n", format!("{name}_{i}")).as_str())
+                    }
+                    let qbits_bin: Vec<String> = (0..n_qbits)
+                        .map(|n| ((num.to_owned() >> n) & 1))
+                        .map(|num| format!("{num}"))
+                        .collect();
+                    for (i, s) in qbits_bin.iter().enumerate() {
+                        cmptime.program.push_str(
+                            format!(
+                                "SET ${} {}\n",
+                                format!("{}_{}", name, i),
+                                if s == "0" { "1 0" } else { "0 1" }
+                            )
+                            .as_str(),
+                        );
+                    }
+                    Ok(None)
                 }
-                Ok(None)
-            }
+                Some(_) => match type_.clone().unwrap().deref() {
+                    ASTNode::Qbit => {
+                        cmptime
+                            .vars
+                            .insert(name.to_string(), (cmptime.i as usize, 0));
+                        cmptime.i += 1;
+                        cmptime
+                            .var_info
+                            .insert(name.to_string(), (*token == 13, 1, ASTNode::Qbit));
+                        cmptime
+                            .program
+                            .push_str(format!("QAL & 0 $ \"{}\"\n", format!("{name}")).as_str());
+                        cmptime.program.push_str(
+                            format!("SET ${name} {}\n", if num == 0 { "1 0" } else { "0 1" })
+                                .as_str(),
+                        );
+                        Ok(None)
+                    }
+                    _ => Err("BACKEND_ERROR: Expected Qbit, as Qbit was found earlier".to_string()),
+                },
+            },
             _ => return Err("BACKEND_ERROR: Expected Num, as Num was found earlier".to_string()),
         },
         _ => return Err("BACKEND_ERROR: Expected Num, as Num was found earlier".to_string()),
@@ -481,7 +502,7 @@ where
                 };
 
                 cmptime.program.push_str(
-                    format!("CPY ${} ${}\n", format!("{}", name_), format!("{}", name)).as_str(),
+                    format!("CPY %{} %{}\n", format!("{}", name_), format!("{}", name)).as_str(),
                 );
                 Ok(cmptime.clone())
             }
@@ -606,15 +627,15 @@ where
 
                 cmptime
                     .program
-                    .push_str(format!("DAL & 0 $ \"{}\"\n", format!("{name}")).as_str());
+                    .push_str(format!("DAL % # \"{}\"\n", format!("{name}")).as_str());
 
                 cmptime.program.push_str(
-                    format!("DCP ${} ${}\n", format!("{}", name), format!("TMP_0")).as_str(),
+                    format!("DCP %{} %{}\n", format!("{}", name), format!("TMP_0")).as_str(),
                 );
 
                 cmptime
                     .program
-                    .push_str(format!("DFR & $ \"{}\"\n", "TMP_0").as_str());
+                    .push_str(format!("DFR % # \"{}\"\n", "TMP_0").as_str());
 
                 Ok(Some(cmptime.clone()))
             }
@@ -775,7 +796,7 @@ where
                         .insert(name.to_string(), (*token == 13, 1, *type_.clone().unwrap()));
                     cmptime
                         .program
-                        .push_str(format!("DAL & 0 $ \"{}\"\n", name).as_str());
+                        .push_str(format!("DAL % # \"{}\"\n", name).as_str());
                     Ok(cmptime.clone())
                 }
                 _ => todo!(),
@@ -949,10 +970,16 @@ where
 
 pub fn fuck_join(s: Vec<ASTNode>, cmptime: &mut Comptime) -> String {
     let mut ret: String = String::new();
+    println!("1");
     for s_ in s {
         let _ = match s_ {
+            ASTNode::Num(num) => ret.push_str(num.to_string().as_str()),
             ASTNode::VariableCall { name } => {
-                ret.push('$');
+                match cmptime.var_info.get(&name).unwrap().2.clone() {
+                    ASTNode::Qbit => ret.push('$'),
+                    ASTNode::Qdit => ret.push('%'),
+                    node => panic!("Expected Qbit or Qdit, got {node:?}"),
+                }
                 if !cmptime.aliass.contains_key(&name) {
                     ret.push_str(name.as_str())
                 } else {
@@ -962,6 +989,7 @@ pub fn fuck_join(s: Vec<ASTNode>, cmptime: &mut Comptime) -> String {
             ASTNode::ExternArg { idx } => {
                 ret.push_str("??");
                 let _ = match *idx {
+                    ASTNode::ArrayIndex(num) => ret.push_str(num.to_string().as_str()),
                     ASTNode::Num(num) => ret.push_str(num.to_string().as_str()),
                     ASTNode::IntCall { name } => {
                         ret.push_str(&cmptime.iterators.get(&name).unwrap().to_string())
@@ -970,17 +998,30 @@ pub fn fuck_join(s: Vec<ASTNode>, cmptime: &mut Comptime) -> String {
                 };
             }
             ASTNode::ArrayAccess { name, index } => {
-                ret.push('$');
                 if let ASTNode::VariableCall { name } = *name {
                     if !cmptime.aliass.contains_key(&name) {
+                        match cmptime.var_info.get(&name).unwrap().2.clone() {
+                            ASTNode::ArrayType { type_, .. } => match *type_ {
+                                ASTNode::Qbit => ret.push('$'),
+                                ASTNode::Qdit => ret.push('%'),
+                                _ => {
+                                    panic!("BACKEND_ERROR: Expected ASTNode::Qbit or ASTNode::Qdit")
+                                }
+                            },
+                            _ => {
+                                panic!("BACKEND_ERROR: Expected ASTNode::Qbit or ASTNode::Qdit")
+                            }
+                        }
                         ret.push_str(name.as_str())
                     } else {
+                        ret.push('$');
                         ret.push_str(cmptime.aliass.get(&name).unwrap().as_str())
                     }
                 }
                 ret.push_str("_");
                 let _ = match *index {
                     ASTNode::Num(num) => ret.push_str(num.to_string().as_str()),
+                    ASTNode::ArrayIndex(num) => ret.push_str(num.to_string().as_str()),
                     ASTNode::IntCall { name: n } => {
                         ret.push_str(&cmptime.iterators.get(&n).unwrap().to_string())
                     }

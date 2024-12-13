@@ -15,13 +15,17 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = &args[1];
     let code = std::fs::read_to_string(path).unwrap();
+    println!("{code}\n\n");
     let mut tokens = tokenize(&code);
+    println!("{:#?}\n\n", tokens);
     tokens = filter50s(tokens.clone());
+    println!("{:#?}\n\n", tokens);
     tokens = filter_all(tokens.clone());
+    println!("{:#?}\n\n", tokens);
 
-    println!("{:#?}", tokens);
-
-    let ast = parse_(from_tokens(tokens.clone()), tokens.clone());
+    let tokens1 = from_tokens(tokens.clone());
+    let tokens2 = tokens.clone();
+    let ast = parse_(tokens1, tokens2);
 
     let ast_ = match ast {
         Ok(ast) => ast,
@@ -45,4 +49,14 @@ fn main() {
         }
     }
     println!("{o:#?}\n\n{}", o.program);
+
+    std::fs::write("out.txt", o.program).unwrap();
+
+    let executer = std::process::Command::new("qbackend")
+        .arg("out.txt")
+        .arg("| cat args.txt")
+        .output()
+        .expect("Failed to execute qbackend");
+
+    println!("{}", String::from_utf8_lossy(&executer.stdout));
 }

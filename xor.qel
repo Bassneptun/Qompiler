@@ -1,0 +1,14 @@
+let inputs: qbit[2];
+for(i in inputs){
+  i = 0;
+}
+
+for(j in 0..2){
+  RY(inputs[j], $j);
+}
+
+let state: qudit;
+CNT(inputs[0], inputs[1], state);
+
+RY(state, $2);
+RX(state, $3);

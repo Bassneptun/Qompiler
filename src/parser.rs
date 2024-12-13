@@ -169,9 +169,10 @@ pub fn from_tokens(tokens: Vec<Token>) -> Vec<Tok> {
             44 => toks.push(Tok::Break),
             45 => toks.push(Tok::PHPRef),
             46 => toks.push(Tok::Qudit),
-            50 => toks.push(Tok::New),
-            51 => toks.push(Tok::Old),
-            52 => toks.push(Tok::Num),
+            47..=69 => toks.push(Tok::GateCall),
+            70 => toks.push(Tok::New),
+            71 => toks.push(Tok::Old),
+            72 => toks.push(Tok::Num),
             _ => panic!("I don't know how this would even ever happen"),
         }
     }
@@ -235,7 +236,11 @@ where
         }
         Some(Tok::CBracket) => {
             advance(tokens, tokens2);
-            parse_statement(tokens, tokens2)
+            if tokens.peek().is_some() {
+                parse_statement(tokens, tokens2)
+            } else {
+                return Ok(None);
+            }
         }
         Some(Tok::Semicolon) => {
             advance(tokens, tokens2);

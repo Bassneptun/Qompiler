@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
-pub const __TOKENS: [&str; 47] = [
+pub const __TOKENS: [&str; 50] = [
     "//", "*/", "/*", "(", ")", "{", "}", "[", "]", ":", ";", ",", "=", "&", "*", "..", "let",
-    "const", "struct", "qbit", "void", "#", "macro", "gate", "H", "PX", "PY", "PZ", "CNT", "CY",
-    "ID", "TOF", "RX", "RY", "RZ", "S", "T", "SDG", "TDG", ".", "if", "for", "in", "return",
-    "break", "$", "qudit",
+    "const", "struct", "qbit", "void", "#", "macro", "gate", "HAD", "PX", "PY", "PZ", "CNT", "CY",
+    "ID", "TOF", "RX", "RY", "RZ", "S", "T", "SDG", "TDG", ".asdlkj", "if", "for", "in", "return",
+    "break", "$", "qudit", "MES", "TR", "DPX",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,7 +59,6 @@ pub fn tokenize(input: &str) -> Vec<Token> {
         let mut longest_match_len = 0;
         let mut longest_match_token = None;
 
-        // Check for predefined tokens
         for (j, token) in __TOKENS.iter().enumerate() {
             if i + token.len() <= input.len() && &input[i..i + token.len()] == *token {
                 if token.len() > longest_match_len {
@@ -69,12 +68,17 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                 found = true;
             }
         }
-
-        if found {
+        if found
+            && (['(', '[', ';', ' '].contains(&input.chars().nth(i + longest_match_len).unwrap())
+                || ((longest_match_len == 1
+                    && ['(', ')', '{', '}', '[', ']', ':', ';', ',', '&', '*', '$']
+                        .contains(&input.chars().nth(i).unwrap()))
+                    || &input[i..i + longest_match_len] == ".."))
+        {
             if let Some((token_index, token_value)) = longest_match_token {
                 if !_str.is_empty() {
                     tokens.push(Token {
-                        token: 50,
+                        token: 70,
                         value: _str.clone(),
                     });
                     _str.clear();
@@ -92,14 +96,14 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             {
                 if !_str.is_empty() {
                     tokens.push(Token {
-                        token: 50,
+                        token: 70,
                         value: _str.clone(),
                     });
                     _str.clear();
                 }
                 if !current_char.is_whitespace() {
                     tokens.push(Token {
-                        token: 55, // Assign a specific token for punctuation if needed
+                        token: 75,
                         value: current_char.to_string(),
                     });
                 }
@@ -113,7 +117,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
     if !_str.is_empty() {
         tokens.push(Token {
-            token: 50,
+            token: 70,
             value: _str,
         });
     }
@@ -127,7 +131,6 @@ pub fn is_num(s: String) -> bool {
 
 pub fn filter50s(mut tokens: Vec<Token>) -> Vec<Token> {
     let mut lookup: HashSet<(u32, String)> = HashSet::new();
-    let mut num_lookup: HashSet<String> = HashSet::new();
     let mut current_scope: u32 = 0;
     for tok in tokens.iter_mut() {
         match tok.token {
@@ -140,16 +143,14 @@ pub fn filter50s(mut tokens: Vec<Token>) -> Vec<Token> {
                     .map(|x| x.to_owned())
                     .collect();
             }
-            50 => {
+            70 => {
                 if lookup.iter().position(|s| s.1 == tok.value).is_some() {
-                    tok.token = 51; // is a reference, not declaration
-                } else if num_lookup.contains(&tok.value) {
-                    tok.token = 52;
+                    tok.token = 71; // is a reference, not declaration
+                } else if is_num(tok.value.clone()) {
+                    tok.token = 72;
                 } else {
                     if !is_num(tok.value.clone()) {
                         lookup.insert((current_scope, tok.value.clone()));
-                    } else {
-                        num_lookup.insert(tok.value.clone());
                     }
                 }
             }
@@ -162,8 +163,8 @@ pub fn filter50s(mut tokens: Vec<Token>) -> Vec<Token> {
 pub fn filter_all(tokens: Vec<Token>) -> Vec<Token> {
     let mut cpy = tokens.clone();
     for t in &mut cpy {
-        if is_num(t.value.clone()) && (t.token == 50 || t.token == 51) {
-            t.token = 52;
+        if is_num(t.value.clone()) && (t.token == 70 || t.token == 71) {
+            t.token = 72;
         }
     }
     cpy
