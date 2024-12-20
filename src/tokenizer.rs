@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
-pub const __TOKENS: [&str; 50] = [
+pub const __TOKENS: [&str; 54] = [
     "//", "*/", "/*", "(", ")", "{", "}", "[", "]", ":", ";", ",", "=", "&", "*", "..", "let",
     "const", "struct", "qbit", "void", "#", "macro", "gate", "HAD", "PX", "PY", "PZ", "CNT", "CY",
     "ID", "TOF", "RX", "RY", "RZ", "S", "T", "SDG", "TDG", ".asdlkj", "if", "for", "in", "return",
-    "break", "$", "qudit", "MES", "TR", "DPX",
+    "break", "$", "qudit", "MES", "TR", "DPX", "CMB", "DCB", "DHAD", "DCX",
 ];
 
 #[derive(Debug, Clone, PartialEq)]

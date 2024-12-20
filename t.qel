@@ -9,4 +9,5 @@ let cmb: qudit;
 CNT(bit, controll, cmb);
 DPX(cmb);
 TR(cmb, bit, 0);
+HAD(bit);
 MES(bit);

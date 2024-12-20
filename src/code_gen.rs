@@ -506,6 +506,41 @@ where
                 );
                 Ok(cmptime.clone())
             }
+            /*
+            ASTNode::Dereference { value } => match *value {
+                ASTNode::VariableCall { name } => {
+                    if let ASTNode::ArrayType { type_, size } =
+                        cmptime.var_info.get(&name.clone()).2
+                    {
+                        if let ASTNode::Qbit = type_ {
+                        } else {
+                            return Err("BACKEND_ERROR: Expected Array of qbits".to_string());
+                        }
+
+                        let n = match *size{
+                            ASTNode::Num(n_) => n_,
+                            _ => return Err("BACKEND_ERROR: Expected size to be an ASTNode::Num".to_string()),
+                        }
+                        let mut name_ = match *lval.clone() {
+                            ASTNode::VariableCall { name } => name,
+                            _ => return Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+                        };
+                        name_ = if !cmptime.aliass.contains_key(&name_) {
+                            name_.clone()
+                        } else {
+                            cmptime.aliass.get(&name_).unwrap().clone()
+                        };
+
+                        cmptime.program.push_str("CMB ${} ${}");
+
+                        for i in 0..n{
+                            cmptime.program.push_str("")
+                        }
+                    }
+                }
+                _ => Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
+            },
+            */
             _ => Err("BACKEND_ERROR: Expected ASTNode::VariableCall".to_string()),
         },
 
@@ -696,18 +731,14 @@ where
                     for (i, arg) in args.iter().enumerate() {
                         let _ = match arg {
                             ASTNode::VariableCall { name } => {
-                                println!("{:?}", name);
                                 cmptime.aliass.insert(
                                     cmptime.function_args.get(&func_name).unwrap()[i].clone(),
                                     name.clone(),
                                 );
-                                println!("{:?}", cmptime.aliass);
                             }
                             _ => return Err("BACKEND_ERROR: Expected VariableDecl ".to_string()),
                         };
                     }
-
-                    println!("{:?}", cmptime.aliass);
 
                     match cmptime.functions.get(&func_name.clone()).unwrap().clone() {
                         ASTNode::Block(b) => {
@@ -816,12 +847,12 @@ pub fn generate_for<I>(
 where
     I: Iterator<Item = ASTNode>,
 {
+    println!("1");
     match iterator.peek() {
         None => Err("BACKEND_ERROR: Expected ASTNode::For, got None".to_string()),
         Some(ASTNode::For { container, .. }) => match *container.clone() {
             ASTNode::VariableCall { name } => {
                 let type_ = cmptime.var_info.get(&name.clone()).unwrap().2.clone();
-                println!("Type: {type_:?}");
                 match type_ {
                     ASTNode::ArrayType { .. } => {
                         return gen_for_array(iterator, cmptime);
@@ -970,20 +1001,34 @@ where
 
 pub fn fuck_join(s: Vec<ASTNode>, cmptime: &mut Comptime) -> String {
     let mut ret: String = String::new();
-    println!("1");
     for s_ in s {
+        println!("2");
         let _ = match s_ {
             ASTNode::Num(num) => ret.push_str(num.to_string().as_str()),
             ASTNode::VariableCall { name } => {
-                match cmptime.var_info.get(&name).unwrap().2.clone() {
-                    ASTNode::Qbit => ret.push('$'),
-                    ASTNode::Qdit => ret.push('%'),
-                    node => panic!("Expected Qbit or Qdit, got {node:?}"),
-                }
-                if !cmptime.aliass.contains_key(&name) {
+                if !cmptime.aliass.contains_key(&name) && !cmptime.iterators.contains_key(&name) {
+                    match cmptime.var_info.get(&name).unwrap().2.clone() {
+                        ASTNode::Qbit => ret.push('$'),
+                        ASTNode::Qdit => ret.push('%'),
+                        node => panic!("Expected Qbit or Qdit, got {node:?}"),
+                    }
                     ret.push_str(name.as_str())
+                } else if !cmptime.iterators.contains_key(&name) {
+                    match HashMap::get(
+                        &cmptime.var_info,
+                        cmptime.aliass.get(&name).unwrap().as_str(),
+                    )
+                    .unwrap()
+                    .2
+                    .clone()
+                    {
+                        ASTNode::Qbit => ret.push('$'),
+                        ASTNode::Qdit => ret.push('%'),
+                        node => panic!("Expected Qbit or Qdit, got {node:?}"),
+                    }
+                    ret.push_str(cmptime.aliass.get(&name).unwrap().as_str());
                 } else {
-                    ret.push_str(cmptime.aliass.get(&name).unwrap().as_str())
+                    ret.push_str(cmptime.iterators.get(&name).unwrap().to_string().as_str())
                 }
             }
             ASTNode::ExternArg { idx } => {

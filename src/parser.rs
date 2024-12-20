@@ -32,15 +32,6 @@ pub enum ASTNode {
         name: String,
         args: Vec<ASTNode>,
     },
-    /*
-    Gate {
-        name: String,
-        gate: Vec<Vec<f32>>,
-        args: Vec<ASTNode>,
-        arg_names: Vec<String>,
-    },
-    */ // not yet implemented, probably not gonna happen either, there's no transformation to not
-    // be performed with existing gates. combination of those can easily be achieved with funtions.
     Struct {
         name: String,
         types: Vec<ASTNode>,
@@ -59,7 +50,6 @@ pub enum ASTNode {
     // Break, that's not implemented yet either, I have not found the need for it yet
     Void,
     Qbit,
-    // Qdit, this is extremely usefull, but not implemented either yet
     Custom,
     Num(i32),
     Type {
@@ -720,7 +710,6 @@ where
     I: Iterator<Item = Tok>,    // Expecting an iterator of owned `Tok` instances
     I2: Iterator<Item = Token>, // Expecting an iterator of owned `Tok` instances
 {
-    println!("1");
     let tok = tokens2.peek().unwrap().token;
     advance(tokens, tokens2);
     let name_ = parse_name(tokens, tokens2);

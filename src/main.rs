@@ -15,13 +15,11 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = &args[1];
     let code = std::fs::read_to_string(path).unwrap();
-    println!("{code}\n\n");
+    //println!("{code}\n\n");
     let mut tokens = tokenize(&code);
-    println!("{:#?}\n\n", tokens);
     tokens = filter50s(tokens.clone());
-    println!("{:#?}\n\n", tokens);
     tokens = filter_all(tokens.clone());
-    println!("{:#?}\n\n", tokens);
+    //println!("{:#?}\n\n", tokens);
 
     let tokens1 = from_tokens(tokens.clone());
     let tokens2 = tokens.clone();
@@ -48,9 +46,30 @@ fn main() {
             exit(1);
         }
     }
-    println!("{o:#?}\n\n{}", o.program);
 
-    std::fs::write("out.txt", o.program).unwrap();
+    println!("enter function: \n");
+
+    /*
+        let mut buffer = String::new();
+        while let Ok(_) = io::stdin().read_line(&mut buffer) {
+            if buffer.contains("q\n") {
+                buffer = buffer.trim_end_matches("q\n").to_string();
+                buffer.pop();
+                break;
+            }
+        }
+
+        buffer = buffer.replace("qb", "%cmb");
+        buffer = buffer.replace("CX", "CNT $bit $controll %cmb");
+        o.program = o.program.replace(
+            "CNT $bit $controll %cmb \nDPX %cmb \nTR %cmb $bit 0 \n",
+            buffer.as_str(),
+        );
+
+    */
+    std::fs::write("out.txt", o.program.clone()).unwrap();
+
+    println!("{o:#?}\n\n{}", o.program);
 
     let executer = std::process::Command::new("qbackend")
         .arg("out.txt")
@@ -58,5 +77,17 @@ fn main() {
         .output()
         .expect("Failed to execute qbackend");
 
-    println!("{}", String::from_utf8_lossy(&executer.stdout));
+    let a = String::from_utf8_lossy(&executer.stdout);
+
+    println!("QBACKEND output:\n\t{}", a);
+
+    /*
+        unsafe {
+            println!(
+                "QBACKEND output:\n\t{}",
+                a.get_unchecked(a.find("ctrl+z").unwrap() + 8..a.len() - 1)
+                    .replace("\n", "\n\t")
+            );
+        }
+    */
 }
