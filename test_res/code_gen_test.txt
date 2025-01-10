@@ -1,4 +1,0 @@
-let a: qbit[5];
-for(i in a){
-  i = 0;
-}
