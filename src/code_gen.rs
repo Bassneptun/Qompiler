@@ -59,7 +59,13 @@ where
     }
 
     match code_gen_node(iterator, &mut c) {
-        Err(e) => println!("Error: {}", e),
+        Err(e) => {
+            return if e != "Expected Node, got None1" {
+                Err(e)
+            } else {
+                Ok(c)
+            }
+        }
         Ok(_thing_else) => {}
     }
 
@@ -847,7 +853,6 @@ pub fn generate_for<I>(
 where
     I: Iterator<Item = ASTNode>,
 {
-    println!("1");
     match iterator.peek() {
         None => Err("BACKEND_ERROR: Expected ASTNode::For, got None".to_string()),
         Some(ASTNode::For { container, .. }) => match *container.clone() {
@@ -1002,7 +1007,6 @@ where
 pub fn fuck_join(s: Vec<ASTNode>, cmptime: &mut Comptime) -> String {
     let mut ret: String = String::new();
     for s_ in s {
-        println!("2");
         let _ = match s_ {
             ASTNode::Num(num) => ret.push_str(num.to_string().as_str()),
             ASTNode::VariableCall { name } => {
