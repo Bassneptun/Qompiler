@@ -10,6 +10,7 @@ QAL & 0 $ "bits_6"
 QAL & 0 $ "bits_7"
 QAL & 0 $ "bits_8"
 QAL & 0 $ "bits_9"
+QAL & 0 $ "bits_10"
 SET $bits_0 1 0
 SET $bits_1 1 0
 SET $bits_2 1 0
@@ -20,6 +21,7 @@ SET $bits_6 1 0
 SET $bits_7 1 0
 SET $bits_8 1 0
 SET $bits_9 1 0
+SET $bits_10 1 0
 DAL % # "cmb"
 CMB $bits_0 $bits_1 %cmb 
 DCB $bits_2 %cmb 
@@ -30,10 +32,13 @@ DCB $bits_6 %cmb
 DCB $bits_7 %cmb 
 DCB $bits_8 %cmb 
 DCB $bits_9 %cmb 
+DCB $bits_10 %cmb 
 DHAD %cmb 
 HAD $controll 
 DCX $controll %cmb 
 DPX %cmb 
+DTR %cmb 11 
+DHAD %cmb 
 TR %cmb $bits_0 0 
 TR %cmb $bits_1 1 
 TR %cmb $bits_2 2 
@@ -44,16 +49,7 @@ TR %cmb $bits_6 6
 TR %cmb $bits_7 7 
 TR %cmb $bits_8 8 
 TR %cmb $bits_9 9 
-HAD $bits_0 
-HAD $bits_1 
-HAD $bits_2 
-HAD $bits_3 
-HAD $bits_4 
-HAD $bits_5 
-HAD $bits_6 
-HAD $bits_7 
-HAD $bits_8 
-HAD $bits_9 
+TR %cmb $bits_10 10 
 MES $bits_0 
 MES $bits_1 
 MES $bits_2 
@@ -64,3 +60,4 @@ MES $bits_6
 MES $bits_7 
 MES $bits_8 
 MES $bits_9 
+MES $bits_10 

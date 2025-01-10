@@ -1,5 +1,5 @@
 let controll: qbit = 1;
-let bits: qbit[10];
+let bits: qbit[11];
 
 for (bit in bits){
   bit = 0;
@@ -9,7 +9,7 @@ let cmb: qudit;
 
 CMB(bits[0], bits[1], cmb);
 
-for (i in 2..10){
+for (i in 2..11){
   DCB(bits[i], cmb);
 }
 
@@ -18,15 +18,13 @@ HAD(controll);
 
 DCX(controll, cmb);
 DPX(cmb);
+DTR(cmb, 11);
+DHAD(cmb);
 
-for (j in 0..10){
+for (j in 0..11){
   TR(cmb, bits[j], j);
 }
 
-for (k in 0..10){
-  HAD(bits[k]);
-}
-
-for (l in 0..10){
+for (l in 0..11){
   MES(bits[l]);
 }
